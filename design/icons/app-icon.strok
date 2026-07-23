@@ -1,0 +1,47 @@
+# @meaning DiskSift application icon
+# @tags disk, storage, reclaim
+documentsize 1024x1024
+palette
+  night #101B26
+  deep #071018
+  paper #EEF2EC
+  cyan #79D7D0
+  rust #E9774E
+shape background template=rectangle
+  round-corners 224
+  fill linear(top, bottom, #101B26, #071018)
+shape plate template=ellipse
+  fill $paper
+  stroke none
+shape body template=rectangle
+  round-corners 48
+  fill $paper
+  stroke none
+shape bottom template=ellipse
+  fill $paper
+  stroke none
+shape seam template=path
+  fill none
+  stroke $night
+  stroke-width 34
+  stroke-linecap round
+  addpoint l at=232,496
+  addpoint c at=512,628 mode=controls c1=232,585 c2=375,628
+  addpoint r at=792,496 mode=controls c1=649,628 c2=792,585
+shape wedge template=path
+  fill $rust
+  stroke none
+  addpoint center at=512,332
+  addpoint edge at=744,248
+  addpoint outer at=812,332
+  close
+shape core template=ellipse
+  fill $cyan
+  stroke none
+place bg shape=background at=32,32 size=960x960
+place body shape=body at=212,320 size=600x340
+place base shape=bottom at=212,510 size=600x300
+place top shape=plate at=212,182 size=600x300
+place slice shape=wedge at=0,0
+place groove shape=seam at=0,0
+place center shape=core center=512,332 radius=72

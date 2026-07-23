@@ -1,0 +1,15 @@
+# @meaning Rust build output
+# @tags rust, cargo, target
+documentsize 24x24
+defaults
+  fill none
+  stroke currentColor
+  stroke-width 1.8
+  stroke-linecap round
+  stroke-linejoin round
+shape crate template=rectangle
+  round-corners 3
+shape brace template=line
+place box shape=crate at=3,4 size=18x16
+place brace-a shape=brace from=5,6 to=19,18
+place brace-b shape=brace from=19,6 to=5,18

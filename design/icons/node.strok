@@ -1,0 +1,17 @@
+# @meaning JavaScript dependency graph
+# @tags javascript, node, dependencies
+documentsize 24x24
+defaults
+  fill none
+  stroke currentColor
+  stroke-width 1.8
+  stroke-linecap round
+  stroke-linejoin round
+shape link template=line
+shape node template=ellipse
+place link-a shape=link from=7,7 to=17,8
+place link-b shape=link from=7,7 to=11,17
+place link-c shape=link from=17,8 to=11,17
+place a shape=node center=7,7 radius=3
+place b shape=node center=17,8 radius=3
+place c shape=node center=11,17 radius=3

@@ -1,0 +1,16 @@
+# @meaning Scan storage locations
+# @tags scan, radar, refresh
+documentsize 24x24
+defaults
+  fill none
+  stroke currentColor
+  stroke-width 1.8
+  stroke-linecap round
+  stroke-linejoin round
+shape orbit template=ellipse
+shape ray template=line
+shape dot template=ellipse
+place outer shape=orbit at=3,3 size=18x18
+place inner shape=orbit at=7,7 size=10x10
+place sweep shape=ray from=12,12 to=19,7
+place signal shape=dot center=12,12 radius=1.7

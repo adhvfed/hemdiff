@@ -1,0 +1,28 @@
+# @meaning Move build artifacts to Trash
+# @tags trash, reclaim, cleanup
+documentsize 24x24
+defaults
+  fill none
+  stroke currentColor
+  stroke-width 1.8
+  stroke-linecap round
+  stroke-linejoin round
+shape bin template=path
+  addpoint tl at=6,8
+  addpoint tr at=18,8
+  addpoint br at=17,20
+  addpoint bl at=7,20
+  close
+shape line template=line
+shape sparkle template=path
+  addpoint top at=19,1
+  addpoint mid at=19,5
+  addpoint right at=23,5
+  subpath
+  addpoint left at=15,5
+  addpoint center at=19,5
+  addpoint bottom at=19,9
+place body shape=bin at=0,0 size=24x24
+place lid shape=line from=5,5 to=15,5
+place handle shape=line from=9,3 to=14,3
+place glint shape=sparkle at=0,0 size=24x24

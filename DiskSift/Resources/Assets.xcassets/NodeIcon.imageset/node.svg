@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <path id="link-a" d="M7 7 L17 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="link-b" d="M7 7 L11 17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="link-c" d="M17 8 L11 17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="a" d="M7 4 C8.65685 4, 10 5.34315, 10 7 C10 8.65685, 8.65685 10, 7 10 C5.34315 10, 4 8.65685, 4 7 C4 5.34315, 5.34315 4, 7 4Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="b" d="M17 5 C18.6569 5, 20 6.34315, 20 8 C20 9.65685, 18.6569 11, 17 11 C15.3431 11, 14 9.65685, 14 8 C14 6.34315, 15.3431 5, 17 5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="c" d="M11 14 C12.6569 14, 14 15.3431, 14 17 C14 18.6569, 12.6569 20, 11 20 C9.34315 20, 8 18.6569, 8 17 C8 15.3431, 9.34315 14, 11 14Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

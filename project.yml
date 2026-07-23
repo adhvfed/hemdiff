@@ -1,0 +1,47 @@
+name: DiskSift
+options:
+  bundleIdPrefix: com.adrians
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  DiskSift:
+    type: application
+    platform: macOS
+    sources:
+      - path: DiskSift
+        excludes:
+          - Resources/Assets.xcassets
+      - path: DiskSift/Resources/Assets.xcassets
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.adrians.Disksift
+        PRODUCT_NAME: DiskSift
+        INFOPLIST_FILE: DiskSift/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_APP_SANDBOX: NO
+        GENERATE_INFOPLIST_FILE: NO
+    scheme:
+      testTargets:
+        - DiskSiftTests
+  DiskSiftTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: DiskSiftTests
+    dependencies:
+      - target: DiskSift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.adrians.DiskSiftTests
+        GENERATE_INFOPLIST_FILE: YES

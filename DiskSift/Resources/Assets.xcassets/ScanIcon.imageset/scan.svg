@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <path id="outer" d="M12 3 C16.9706 3, 21 7.02944, 21 12 C21 16.9706, 16.9706 21, 12 21 C7.02944 21, 3 16.9706, 3 12 C3 7.02944, 7.02944 3, 12 3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="inner" d="M12 7 C14.7614 7, 17 9.23858, 17 12 C17 14.7614, 14.7614 17, 12 17 C9.23858 17, 7 14.7614, 7 12 C7 9.23858, 9.23858 7, 12 7Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="sweep" d="M12 12 L19 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="signal" d="M12 10.3 C12.9389 10.3, 13.7 11.0611, 13.7 12 C13.7 12.9389, 12.9389 13.7, 12 13.7 C11.0611 13.7, 10.3 12.9389, 10.3 12 C10.3 11.0611, 11.0611 10.3, 12 10.3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <path id="box" d="M3 7 C3 5.34315, 4.34315 4, 6 4 L18 4 C19.6569 4, 21 5.34315, 21 7 L21 17 C21 18.6569, 19.6569 20, 18 20 L6 20 C4.34315 20, 3 18.6569, 3 17Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="brace-a" d="M5 6 L19 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    <path id="brace-b" d="M19 6 L5 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

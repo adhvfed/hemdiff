@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="grad-bg-fill" x1="50%" y1="0%" x2="50%" y2="100%" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#101B26"/><stop offset="100%" stop-color="#071018"/></linearGradient>
+  </defs>
+    <path id="bg" d="M32 256 A224 224 0 0 1 256 32 L768 32 A224 224 0 0 1 992 256 L992 768 A224 224 0 0 1 768 992 L256 992 A224 224 0 0 1 32 768Z" fill="url(#grad-bg-fill)" />
+    <path id="body" d="M212 368 C212 341.49, 233.49 320, 260 320 L764 320 C790.51 320, 812 341.49, 812 368 L812 612 C812 638.51, 790.51 660, 764 660 L260 660 C233.49 660, 212 638.51, 212 612Z" fill="#EEF2EC" stroke="none" />
+    <path id="base" d="M512 510 C677.685 510, 812 577.157, 812 660 C812 742.843, 677.685 810, 512 810 C346.315 810, 212 742.843, 212 660 C212 577.157, 346.315 510, 512 510Z" fill="#EEF2EC" stroke="none" />
+    <path id="top" d="M512 182 C677.685 182, 812 249.157, 812 332 C812 414.843, 677.685 482, 512 482 C346.315 482, 212 414.843, 212 332 C212 249.157, 346.315 182, 512 182Z" fill="#EEF2EC" stroke="none" />
+    <path id="slice" d="M512 332 L744 248 L812 332Z" fill="#E9774E" stroke="none" />
+    <path id="groove" d="M232 496 C232 585, 375 628, 512 628 C649 628, 792 585, 792 496" fill="none" stroke="#101B26" stroke-width="34" stroke-linecap="round" />
+    <path id="center" d="M512 260 C551.765 260, 584 292.235, 584 332 C584 371.765, 551.765 404, 512 404 C472.235 404, 440 371.765, 440 332 C440 292.235, 472.235 260, 512 260Z" fill="#79D7D0" stroke="none" />
+</svg>

@@ -1,0 +1,20 @@
+# @meaning Disk utilization status in the macOS menu bar
+# @tags disk, storage, status, utilization
+documentsize 20x20
+defaults
+  fill none
+  stroke currentColor
+  stroke-width 1.7
+  stroke-linecap round
+  stroke-linejoin round
+shape enclosure template=rectangle
+  round-corners 3
+shape line template=line
+shape light template=ellipse
+  fill currentColor
+  stroke none
+place drive shape=enclosure at=2,3 size=16x14
+place divider shape=line from=3,11 to=17,11
+place used shape=line from=5,7 to=12,7
+place available shape=line from=14.5,7 to=15,7
+place status shape=light center=14.5,14 radius=1
