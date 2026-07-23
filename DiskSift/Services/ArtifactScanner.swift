@@ -92,6 +92,7 @@ struct ArtifactScanner: Sendable {
                 guard values.isSymbolicLink != true else { continue }
 
                 let measured = try measureDirectory(artifactURL)
+                let fileIdentity = try ArtifactFileIdentity.capture(at: artifactURL)
                 filesVisited += measured.files
                 directoriesVisited += measured.directories
                 errorsSkipped += measured.errors
@@ -114,7 +115,8 @@ struct ArtifactScanner: Sendable {
                         worktreeName: gitWorktreeName(
                             for: marker.projectURL,
                             stoppingAt: marker.scopeRoot
-                        )
+                        ),
+                        fileIdentity: fileIdentity
                     )
                 )
 

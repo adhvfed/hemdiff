@@ -28,6 +28,21 @@ enum ArtifactKind: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+struct ArtifactFileIdentity: Codable, Hashable, Sendable {
+    let volume: UInt64
+    let file: UInt64
+
+    static func capture(at url: URL) throws -> ArtifactFileIdentity {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let volume = (attributes[.systemNumber] as? NSNumber)?.uint64Value,
+              let file = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
+        else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return ArtifactFileIdentity(volume: volume, file: file)
+    }
+}
+
 struct Artifact: Identifiable, Codable, Hashable, Sendable {
     let id: String
     let kind: ArtifactKind
@@ -37,6 +52,7 @@ struct Artifact: Identifiable, Codable, Hashable, Sendable {
     let createdAt: Date?
     let modifiedAt: Date?
     let worktreeName: String?
+    let fileIdentity: ArtifactFileIdentity
 
     init(
         kind: ArtifactKind,
@@ -45,7 +61,8 @@ struct Artifact: Identifiable, Codable, Hashable, Sendable {
         allocatedBytes: Int64,
         createdAt: Date?,
         modifiedAt: Date?,
-        worktreeName: String? = nil
+        worktreeName: String? = nil,
+        fileIdentity: ArtifactFileIdentity
     ) {
         self.kind = kind
         self.path = path
@@ -54,6 +71,7 @@ struct Artifact: Identifiable, Codable, Hashable, Sendable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.worktreeName = worktreeName
+        self.fileIdentity = fileIdentity
         id = "\(kind.rawValue):\(URL(fileURLWithPath: path).standardizedFileURL.path)"
     }
 
@@ -70,7 +88,7 @@ struct ScannedCategory: Identifiable, Codable, Hashable, Sendable {
 }
 
 struct DiskSnapshot: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 3
+    static let currentSchemaVersion = 4
 
     let schemaVersion: Int
     let roots: [String]

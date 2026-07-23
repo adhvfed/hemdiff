@@ -1,4 +1,3 @@
-import AppKit
 import Combine
 import Foundation
 
@@ -12,6 +11,7 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var noticeMessage: String?
     @Published private(set) var scanRoots: [URL]
+    @Published private(set) var reclaimingArtifactIDs = Set<Artifact.ID>()
 
     private let scanner: ArtifactScanner
     private let volumeMonitor: VolumeMonitor
@@ -155,7 +155,27 @@ final class AppModel: ObservableObject {
 
     func reclaimSelected() async {
         let artifacts = selectedArtifacts
+        await reclaim(artifacts)
+    }
+
+    func reclaim(_ artifact: Artifact) async {
+        guard let currentArtifact = snapshot.artifacts.first(where: { $0.id == artifact.id }) else {
+            errorMessage = "That folder is no longer in the current inventory. Scan again before cleaning it."
+            return
+        }
+        await reclaim([currentArtifact])
+    }
+
+    private func reclaim(_ artifacts: [Artifact]) async {
         guard !artifacts.isEmpty else { return }
+        let artifactIDs = Set(artifacts.map(\.id))
+        guard reclaimingArtifactIDs.isDisjoint(with: artifactIDs) else {
+            errorMessage = "Cleanup is already in progress for one of those folders."
+            return
+        }
+
+        reclaimingArtifactIDs.formUnion(artifactIDs)
+        defer { reclaimingArtifactIDs.subtract(artifactIDs) }
         errorMessage = nil
         noticeMessage = nil
 
@@ -183,10 +203,6 @@ final class AppModel: ObservableObject {
     func removeScanRoot(_ url: URL) {
         scanRoots.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
         persistRoots()
-    }
-
-    func reveal(_ artifact: Artifact) {
-        NSWorkspace.shared.activateFileViewerSelecting([artifact.url])
     }
 
     fileprivate func receiveScanProgress(_ progress: ScanProgress) {

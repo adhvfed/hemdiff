@@ -7,41 +7,64 @@ palette
   paper #EEF2EC
   cyan #79D7D0
   rust #E9774E
+  quiet #536675
 shape background template=rectangle
   round-corners 224
   fill linear(top, bottom, #101B26, #071018)
-shape plate template=ellipse
+  stroke none
+shape shadow template=rectangle
+  round-corners 128
+  fill #000000
+  stroke none
+  opacity 0.28
+  blur 18
+shape enclosure template=rectangle
+  round-corners 128
   fill $paper
   stroke none
-shape body template=rectangle
-  round-corners 48
-  fill $paper
+shape divider template=rectangle
+  round-corners 54
+  fill $night
   stroke none
-shape bottom template=ellipse
-  fill $paper
+shape detail-rail template=rectangle
+  round-corners 34
+  fill $quiet
   stroke none
-shape seam template=path
-  fill none
-  stroke $night
-  stroke-width 34
-  stroke-linecap round
-  addpoint l at=232,496
-  addpoint c at=512,628 mode=controls c1=232,585 c2=375,628
-  addpoint r at=792,496 mode=controls c1=649,628 c2=792,585
-shape wedge template=path
+shape used template=rectangle
+  round-corners tl=34 tr=8 br=8 bl=34
   fill $rust
   stroke none
-  addpoint center at=512,332
-  addpoint edge at=744,248
-  addpoint outer at=812,332
-  close
-shape core template=ellipse
+shape node template=rectangle
+  round-corners 8
   fill $cyan
   stroke none
+shape available template=rectangle
+  round-corners tl=8 tr=34 br=34 bl=8
+  fill $quiet
+  stroke none
+shape detail-used template=rectangle
+  round-corners tl=22 tr=6 br=6 bl=22
+  fill $rust
+  stroke none
+shape detail-node template=rectangle
+  round-corners 6
+  fill $cyan
+  stroke none
+shape detail-free template=rectangle
+  round-corners tl=6 tr=22 br=22 bl=6
+  fill $night
+  stroke none
 place bg shape=background at=32,32 size=960x960
-place body shape=body at=212,320 size=600x340
-place base shape=bottom at=212,510 size=600x300
-place top shape=plate at=212,182 size=600x300
-place slice shape=wedge at=0,0
-place groove shape=seam at=0,0
-place center shape=core center=512,332 radius=72
+place shade shape=shadow at=158,260 size=732x552
+place drive shape=enclosure at=146,236 size=732x552
+place capacity shape=divider at=218,316 size=588x108
+place rust-usage shape=used at=238,352 size=310x68
+place node-usage shape=node at=560,352 size=92x68
+place free-space shape=available at=664,352 size=122x68
+place detail-capacity shape=detail-rail at=218,504 size=588x68
+place detail-rust shape=detail-used at=238,516 size=168x44
+place detail-node-modules shape=detail-node at=418,516 size=218x44
+place detail-available shape=detail-free at=648,516 size=138x44
+place tertiary-capacity shape=detail-rail at=218,644 size=420x44
+place tertiary-used shape=detail-used at=234,652 size=250x28
+place tertiary-free shape=detail-free at=496,652 size=126x28

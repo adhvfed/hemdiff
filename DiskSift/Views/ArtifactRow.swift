@@ -17,6 +17,7 @@ struct ArtifactIcon: View {
 
 struct ArtifactRow: View {
     @EnvironmentObject private var model: AppModel
+    @State private var confirmsCleanup = false
     let artifact: Artifact
     var selectable = false
 
@@ -75,16 +76,40 @@ struct ArtifactRow: View {
             }
 
             Button {
-                model.reveal(artifact)
+                confirmsCleanup = true
             } label: {
-                Image(systemName: "arrow.right.circle")
+                if model.reclaimingArtifactIDs.contains(artifact.id) {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image("ReclaimIcon")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 17, height: 17)
+                }
             }
             .buttonStyle(.borderless)
-            .help("Reveal in Finder")
-            .accessibilityLabel("Reveal \(artifact.projectName) in Finder")
+            .disabled(model.reclaimingArtifactIDs.contains(artifact.id))
+            .help("Clean this folder (moves to Trash)")
+            .accessibilityLabel("Clean \(artifact.kind.title) for \(artifact.projectName)")
         }
         .contentShape(Rectangle())
         .padding(.vertical, 11)
+        .confirmationDialog(
+            "Clean \(artifact.kind.title) for \(artifact.projectName)?",
+            isPresented: $confirmsCleanup,
+            titleVisibility: .visible
+        ) {
+            Button("Move Folder to Trash", role: .destructive) {
+                Task { await model.reclaim(artifact) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Target: \(artifact.path.abbreviatingHome)\n\nDiskSift will verify that this is the same scanned \(artifact.kind.folderName) folder before moving it to Trash."
+            )
+        }
     }
 
     private var createdText: String {
@@ -93,7 +118,7 @@ struct ArtifactRow: View {
     }
 }
 
-private extension String {
+extension String {
     var abbreviatingHome: String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         guard hasPrefix(home) else { return self }

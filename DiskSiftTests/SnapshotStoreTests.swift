@@ -16,7 +16,8 @@ final class SnapshotStoreTests: XCTestCase {
             projectPath: "/tmp/App",
             allocatedBytes: 42_000,
             createdAt: date,
-            modifiedAt: date
+            modifiedAt: date,
+            fileIdentity: ArtifactFileIdentity(volume: 1, file: 2)
         )
         let expected = DiskSnapshot(
             schemaVersion: DiskSnapshot.currentSchemaVersion,
@@ -43,7 +44,8 @@ final class SnapshotStoreTests: XCTestCase {
             projectPath: "/tmp/One",
             allocatedBytes: 10,
             createdAt: nil,
-            modifiedAt: nil
+            modifiedAt: nil,
+            fileIdentity: ArtifactFileIdentity(volume: 1, file: 10)
         )
         let second = Artifact(
             kind: .nodeModules,
@@ -51,7 +53,8 @@ final class SnapshotStoreTests: XCTestCase {
             projectPath: "/tmp/Two",
             allocatedBytes: 20,
             createdAt: nil,
-            modifiedAt: nil
+            modifiedAt: nil,
+            fileIdentity: ArtifactFileIdentity(volume: 1, file: 20)
         )
         var snapshot = DiskSnapshot.empty
         snapshot.artifacts = [first, second]

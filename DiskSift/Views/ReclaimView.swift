@@ -180,7 +180,12 @@ struct ReclaimView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(DiskSiftTheme.rust)
-                .disabled(model.selectedArtifactIDs.isEmpty)
+                .disabled(
+                    model.selectedArtifactIDs.isEmpty
+                        || !model.reclaimingArtifactIDs.isDisjoint(
+                            with: model.selectedArtifactIDs
+                        )
+                )
                 .keyboardShortcut(.delete, modifiers: [.command])
             }
             .padding(.horizontal, 24)
