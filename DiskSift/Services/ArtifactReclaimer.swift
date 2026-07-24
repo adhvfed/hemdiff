@@ -89,10 +89,7 @@ struct ArtifactReclaimer: Sendable {
 
                 do {
                     try validate(artifact)
-                    try FileManager.default.trashItem(
-                        at: artifact.url.standardizedFileURL,
-                        resultingItemURL: nil
-                    )
+                    try FileManager.default.removeItem(at: artifact.url.standardizedFileURL)
                     reclaimedIDs.insert(artifact.id)
                     reclaimedBytes += artifact.allocatedBytes
                 } catch {

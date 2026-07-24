@@ -1,5 +1,5 @@
-# @meaning Move build artifacts to Trash
-# @tags trash, reclaim, cleanup
+# @meaning Permanently delete build artifacts
+# @tags delete, reclaim, cleanup
 documentsize 24x24
 defaults
   fill none

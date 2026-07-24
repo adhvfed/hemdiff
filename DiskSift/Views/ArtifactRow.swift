@@ -91,7 +91,7 @@ struct ArtifactRow: View {
             }
             .buttonStyle(.borderless)
             .disabled(model.reclaimingArtifactIDs.contains(artifact.id))
-            .help("Clean this folder (moves to Trash)")
+            .help("Permanently delete this folder")
             .accessibilityLabel("Clean \(artifact.kind.title) for \(artifact.projectName)")
         }
         .contentShape(Rectangle())
@@ -101,13 +101,13 @@ struct ArtifactRow: View {
             isPresented: $confirmsCleanup,
             titleVisibility: .visible
         ) {
-            Button("Move Folder to Trash", role: .destructive) {
+            Button("Delete Folder Permanently", role: .destructive) {
                 Task { await model.reclaim(artifact) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "Target: \(artifact.path.abbreviatingHome)\n\nDiskSift will verify that this is the same scanned \(artifact.kind.folderName) folder before moving it to Trash."
+                "Target: \(artifact.path.abbreviatingHome)\n\nDiskSift will verify that this is the same scanned \(artifact.kind.folderName) folder before permanently deleting it. This cannot be undone."
             )
         }
     }

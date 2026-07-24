@@ -185,12 +185,12 @@ final class AppModel: ObservableObject {
             selectedArtifactIDs.subtract(result.reclaimedIDs)
             try? snapshotStore.save(snapshot)
             refreshVolume()
-            noticeMessage = "Moved \(result.reclaimedIDs.count) folder\(result.reclaimedIDs.count == 1 ? "" : "s") to Trash and reclaimed \(ByteText.compact(result.reclaimedBytes))."
+            noticeMessage = "Permanently deleted \(result.reclaimedIDs.count) folder\(result.reclaimedIDs.count == 1 ? "" : "s") and reclaimed \(ByteText.compact(result.reclaimedBytes))."
         }
 
         if !result.failures.isEmpty {
             let details = result.failures.values.prefix(2).joined(separator: " ")
-            errorMessage = "\(result.failures.count) folder\(result.failures.count == 1 ? "" : "s") could not be moved to Trash. \(details)"
+            errorMessage = "\(result.failures.count) folder\(result.failures.count == 1 ? "" : "s") could not be deleted. \(details)"
         }
     }
 

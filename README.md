@@ -13,4 +13,4 @@ xcodebuild -project DiskSift.xcodeproj -scheme DiskSift -configuration Debug bui
 Scans run at utility priority, are cached between launches, and are considered
 fresh for six hours. Disk capacity refreshes independently without a filesystem
 walk. Individual or selected folders can be cleaned through an explicit
-confirmation; every target is revalidated before it moves to the macOS Trash.
+confirmation; every target is revalidated before it is permanently deleted.

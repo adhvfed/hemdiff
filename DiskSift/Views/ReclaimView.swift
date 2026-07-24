@@ -74,17 +74,17 @@ struct ReclaimView: View {
         }
         .navigationTitle("Reclaim")
         .confirmationDialog(
-            "Move selected folders to Trash?",
+            "Permanently delete selected folders?",
             isPresented: $confirmsReclaim,
             titleVisibility: .visible
         ) {
-            Button("Move \(model.selectedArtifactIDs.count) to Trash", role: .destructive) {
+            Button("Delete \(model.selectedArtifactIDs.count) Permanently", role: .destructive) {
                 Task { await model.reclaimSelected() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This will move \(ByteText.compact(model.selectedBytes)) of regenerable build folders to the macOS Trash. No files are permanently deleted."
+                "This will permanently delete \(ByteText.compact(model.selectedBytes)) of regenerable build folders. This cannot be undone."
             )
         }
     }
@@ -95,7 +95,7 @@ struct ReclaimView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Choose what to reclaim")
                         .font(.system(size: 27, weight: .bold, design: .rounded))
-                    Text("Every folder is revalidated before it moves to Trash.")
+                    Text("Every folder is revalidated before it is permanently deleted.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -170,12 +170,12 @@ struct ReclaimView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(selectionTitle)
                         .font(.callout.weight(.semibold))
-                    Text("Folders remain recoverable from Trash.")
+                    Text("Deletion bypasses Trash and cannot be undone.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Move to Trash") {
+                Button("Delete Permanently") {
                     confirmsReclaim = true
                 }
                 .buttonStyle(.borderedProminent)
