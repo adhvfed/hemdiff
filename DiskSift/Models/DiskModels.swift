@@ -3,6 +3,8 @@ import Foundation
 enum ArtifactKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case rustTarget
     case nodeModules
+    case xcodeDerivedData
+    case swiftBuild
 
     var id: String { rawValue }
 
@@ -10,6 +12,8 @@ enum ArtifactKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .rustTarget: "Rust target"
         case .nodeModules: "node_modules"
+        case .xcodeDerivedData: "Xcode DerivedData"
+        case .swiftBuild: "SwiftPM .build"
         }
     }
 
@@ -17,14 +21,22 @@ enum ArtifactKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .rustTarget: "target"
         case .nodeModules: "node_modules"
+        case .xcodeDerivedData: "DerivedData"
+        case .swiftBuild: ".build"
         }
     }
 
-    var markerName: String {
+    var markerName: String? {
         switch self {
         case .rustTarget: "Cargo.toml"
         case .nodeModules: "package.json"
+        case .xcodeDerivedData: nil
+        case .swiftBuild: "Package.swift"
         }
+    }
+
+    var isKnownContainerArtifact: Bool {
+        self == .xcodeDerivedData
     }
 }
 
@@ -77,7 +89,17 @@ struct Artifact: Identifiable, Codable, Hashable, Sendable {
 
     var url: URL { URL(fileURLWithPath: path) }
     var projectURL: URL { URL(fileURLWithPath: projectPath) }
-    var projectName: String { projectURL.lastPathComponent }
+    var projectName: String {
+        switch kind {
+        case .xcodeDerivedData:
+            if url.lastPathComponent == "ModuleCache.noindex" {
+                return "Module cache"
+            }
+            return url.lastPathComponent
+        case .rustTarget, .nodeModules, .swiftBuild:
+            return projectURL.lastPathComponent
+        }
+    }
 }
 
 struct ScannedCategory: Identifiable, Codable, Hashable, Sendable {
@@ -88,7 +110,9 @@ struct ScannedCategory: Identifiable, Codable, Hashable, Sendable {
 }
 
 struct DiskSnapshot: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 4
+    // Discovery now records artifact directories found directly from Spotlight,
+    // so an older cache would materially undercount the inventory.
+    static let currentSchemaVersion = 6
 
     let schemaVersion: Int
     let roots: [String]

@@ -5,13 +5,26 @@ struct ArtifactIcon: View {
     var size: CGFloat = 24
 
     var body: some View {
-        Image(kind == .rustTarget ? "RustIcon" : "NodeIcon")
-            .resizable()
-            .renderingMode(.template)
-            .scaledToFit()
-            .foregroundStyle(DiskSiftTheme.color(for: kind))
-            .frame(width: size, height: size)
-            .accessibilityHidden(true)
+        Group {
+            switch kind {
+            case .rustTarget:
+                Image("RustIcon")
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+            case .nodeModules:
+                Image("NodeIcon")
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+            case .xcodeDerivedData, .swiftBuild:
+                Image(systemName: "hammer")
+                    .font(.system(size: size * 0.82, weight: .medium))
+            }
+        }
+        .foregroundStyle(DiskSiftTheme.color(for: kind))
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 
@@ -53,7 +66,7 @@ struct ArtifactRow: View {
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
                     Text(artifact.worktreeName.map { "\($0) worktree · \(artifact.kind.folderName)" }
-                         ?? artifact.kind.folderName)
+                         ?? artifact.kind.title)
                         .font(.caption)
                         .foregroundStyle(DiskSiftTheme.color(for: artifact.kind))
                 }
@@ -107,7 +120,7 @@ struct ArtifactRow: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "Target: \(artifact.path.abbreviatingHome)\n\nDiskSift will verify that this is the same scanned \(artifact.kind.folderName) folder before permanently deleting it. This cannot be undone."
+                "Target: \(artifact.path.abbreviatingHome)\n\nDiskSift will verify that this is the same scanned \(artifact.kind.title) folder before permanently deleting it. This cannot be undone."
             )
         }
     }

@@ -1,7 +1,8 @@
 # DiskSift
 
 DiskSift is a native macOS disk monitor focused on low-overhead visibility and
-safe cleanup of Rust `target` and JavaScript `node_modules` folders.
+safe cleanup of regenerable developer storage: Rust `target`, JavaScript
+`node_modules`, SwiftPM `.build`, and Xcode `DerivedData` folders.
 
 ## Build
 

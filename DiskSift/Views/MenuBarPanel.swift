@@ -39,7 +39,8 @@ struct MenuBarPanel: View {
                         StorageRail(
                             volume: volume,
                             rustBytes: model.snapshot.bytes(for: .rustTarget),
-                            nodeBytes: model.snapshot.bytes(for: .nodeModules)
+                            nodeBytes: model.snapshot.bytes(for: .nodeModules),
+                            appleBytes: developerArtifactBytes
                         )
                         .frame(height: 14)
                     }
@@ -60,6 +61,17 @@ struct MenuBarPanel: View {
                         Text("node_modules")
                             .font(.caption)
                         Text(ByteText.compact(model.snapshot.bytes(for: .nodeModules)))
+                            .font(.callout.weight(.semibold))
+                            .monospacedDigit()
+                    }
+                }
+
+                HStack {
+                    ArtifactIcon(kind: .xcodeDerivedData, size: 20)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Xcode / SwiftPM")
+                            .font(.caption)
+                        Text(ByteText.compact(developerArtifactBytes))
                             .font(.callout.weight(.semibold))
                             .monospacedDigit()
                     }
@@ -96,5 +108,10 @@ struct MenuBarPanel: View {
             return "Preparing first inventory"
         }
         return "Updated \(model.snapshot.finishedAt.formatted(.relative(presentation: .named)))"
+    }
+
+    private var developerArtifactBytes: Int64 {
+        model.snapshot.bytes(for: .xcodeDerivedData)
+            + model.snapshot.bytes(for: .swiftBuild)
     }
 }

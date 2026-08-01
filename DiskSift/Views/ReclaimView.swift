@@ -4,6 +4,7 @@ private enum ArtifactFilter: String, CaseIterable, Identifiable {
     case all
     case rust
     case node
+    case apple
 
     var id: String { rawValue }
     var title: String {
@@ -11,6 +12,7 @@ private enum ArtifactFilter: String, CaseIterable, Identifiable {
         case .all: "All"
         case .rust: "Rust"
         case .node: "Node"
+        case .apple: "Xcode / SwiftPM"
         }
     }
 }
@@ -36,6 +38,8 @@ struct ReclaimView: View {
             case .all: true
             case .rust: artifact.kind == .rustTarget
             case .node: artifact.kind == .nodeModules
+            case .apple:
+                artifact.kind == .xcodeDerivedData || artifact.kind == .swiftBuild
             }
         }
         return filtered.sorted { lhs, rhs in
@@ -61,7 +65,7 @@ struct ReclaimView: View {
                     systemImage: "checkmark.seal",
                     description: Text(
                         model.isScanning
-                            ? "A scan is currently looking for project artifacts."
+                            ? "A scan is currently looking for developer artifacts."
                             : "Run a scan to refresh the inventory."
                     )
                 )
@@ -84,7 +88,7 @@ struct ReclaimView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This will permanently delete \(ByteText.compact(model.selectedBytes)) of regenerable build folders. This cannot be undone."
+                "This will permanently delete \(ByteText.compact(model.selectedBytes)) of regenerable developer folders. This cannot be undone."
             )
         }
     }
@@ -95,7 +99,7 @@ struct ReclaimView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Choose what to reclaim")
                         .font(.system(size: 27, weight: .bold, design: .rounded))
-                    Text("Every folder is revalidated before it is permanently deleted.")
+                    Text("Every developer folder is revalidated before it is permanently deleted.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -108,8 +112,8 @@ struct ReclaimView: View {
                         Text(item.title).tag(item)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 250)
+                .pickerStyle(.menu)
+                .frame(width: 180, alignment: .leading)
 
                 Spacer()
 

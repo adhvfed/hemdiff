@@ -3,12 +3,17 @@ import SwiftUI
 enum DiskSiftTheme {
     static let rust = Color(red: 0.91, green: 0.34, blue: 0.20)
     static let node = Color(red: 0.12, green: 0.63, blue: 0.62)
+    static let xcode = Color(red: 0.48, green: 0.42, blue: 0.86)
     static let ink = Color(red: 0.08, green: 0.12, blue: 0.16)
     static let paper = Color(red: 0.965, green: 0.965, blue: 0.94)
     static let darkPaper = Color(red: 0.055, green: 0.085, blue: 0.11)
 
     static func color(for kind: ArtifactKind) -> Color {
-        kind == .rustTarget ? rust : node
+        switch kind {
+        case .rustTarget: rust
+        case .nodeModules: node
+        case .xcodeDerivedData, .swiftBuild: xcode
+        }
     }
 }
 

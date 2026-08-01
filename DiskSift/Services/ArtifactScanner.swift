@@ -72,9 +72,13 @@ struct ArtifactScanner: Sendable {
 
         for marker in discovery.markers {
             try Task.checkCancellation()
-            let artifactURL = marker.projectURL
-                .appendingPathComponent(marker.kind.folderName, isDirectory: true)
-                .standardizedFileURL
+            let artifactURL = (
+                marker.artifactURL
+                    ?? marker.projectURL.appendingPathComponent(
+                        marker.kind.folderName,
+                        isDirectory: true
+                    )
+            ).standardizedFileURL
             guard measuredPaths.insert(artifactURL.path).inserted else { continue }
 
             var isDirectory: ObjCBool = false

@@ -3,6 +3,51 @@ import XCTest
 @testable import DiskSift
 
 final class ArtifactReclaimerTests: XCTestCase {
+    func testValidationAcceptsXcodeDerivedDataChildInKnownContainer() throws {
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DiskSiftReclaim-\(UUID().uuidString)", isDirectory: true)
+        let container = ProjectLocator.xcodeDerivedDataRoot(in: fixture)
+        let project = container.appendingPathComponent("DiskSift-ABC123", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        let artifact = Artifact(
+            kind: .xcodeDerivedData,
+            path: project.path,
+            projectPath: container.path,
+            allocatedBytes: 0,
+            createdAt: nil,
+            modifiedAt: nil,
+            fileIdentity: try ArtifactFileIdentity.capture(at: project)
+        )
+
+        XCTAssertNoThrow(try ArtifactReclaimer(homeDirectory: fixture).validate(artifact))
+    }
+
+    func testValidationRejectsLookalikeXcodeDerivedDataContainer() throws {
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DiskSiftReclaim-\(UUID().uuidString)", isDirectory: true)
+        let derivedData = fixture
+            .appendingPathComponent("Library/Developer/Xcode/DerivedData", isDirectory: true)
+        let project = derivedData.appendingPathComponent("DiskSift-ABC123", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+
+        let artifact = Artifact(
+            kind: .xcodeDerivedData,
+            path: project.path,
+            projectPath: derivedData.path,
+            allocatedBytes: 0,
+            createdAt: nil,
+            modifiedAt: nil,
+            fileIdentity: try ArtifactFileIdentity.capture(at: project)
+        )
+
+        XCTAssertThrowsError(try ArtifactReclaimer().validate(artifact)) { error in
+            XCTAssertEqual(error as? ReclaimValidationError, .unexpectedPath)
+        }
+    }
+
     func testValidationRejectsMarkerlessFolder() throws {
         let project = FileManager.default.temporaryDirectory
             .appendingPathComponent("DiskSiftReclaim-\(UUID().uuidString)", isDirectory: true)

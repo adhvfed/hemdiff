@@ -95,7 +95,8 @@ struct OverviewView: View {
                         StorageRail(
                             volume: volume,
                             rustBytes: model.snapshot.bytes(for: .rustTarget),
-                            nodeBytes: model.snapshot.bytes(for: .nodeModules)
+                            nodeBytes: model.snapshot.bytes(for: .nodeModules),
+                            appleBytes: developerArtifactBytes
                         )
 
                         StorageLegend(snapshot: model.snapshot, volume: volume)
@@ -115,7 +116,7 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Regenerable project storage")
+                    Text("Regenerable developer storage")
                         .font(.title3.weight(.semibold))
                     Text("\(model.snapshot.artifacts.count) folders · \(ByteText.compact(model.snapshot.artifactBytes)) reclaimable")
                         .font(.callout)
@@ -133,7 +134,7 @@ struct OverviewView: View {
                         Image(systemName: model.isScanning ? "magnifyingglass" : "checkmark.seal")
                             .font(.system(size: 28))
                             .foregroundStyle(model.isScanning ? DiskSiftTheme.node : .secondary)
-                        Text(model.isScanning ? "Looking for build artifacts…" : "No project artifacts found")
+                        Text(model.isScanning ? "Looking for developer artifacts…" : "No developer artifacts found")
                             .font(.headline)
                         Text(model.isScanning
                              ? "You can keep using DiskSift while the inventory is built."
@@ -159,9 +160,9 @@ struct OverviewView: View {
     private var locationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Discovered project groups")
+                Text("Discovered storage groups")
                     .font(.title3.weight(.semibold))
-                Text("Known artifact bytes grouped by their top-level location—not macOS storage categories.")
+                Text("Known developer bytes grouped by their top-level location—not macOS storage categories.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -190,6 +191,11 @@ struct OverviewView: View {
                 }
             }
         }
+    }
+
+    private var developerArtifactBytes: Int64 {
+        model.snapshot.bytes(for: .xcodeDerivedData)
+            + model.snapshot.bytes(for: .swiftBuild)
     }
 }
 

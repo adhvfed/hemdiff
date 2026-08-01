@@ -3,6 +3,67 @@ import XCTest
 @testable import DiskSift
 
 final class ArtifactScannerTests: XCTestCase {
+    func testFindsXcodeDerivedDataAndSwiftPackageBuildOutput() async throws {
+        let fixture = try TemporaryDirectory()
+        defer { fixture.remove() }
+
+        let derivedDataProject = ProjectLocator
+            .xcodeDerivedDataRoot(in: fixture.url)
+            .appendingPathComponent("DiskSift-ABC123", isDirectory: true)
+        try fixture.directory("Library/Developer/Xcode/DerivedData/DiskSift-ABC123/Build")
+        try fixture.dataFile(
+            "Library/Developer/Xcode/DerivedData/DiskSift-ABC123/Build/products.bin",
+            byteCount: 4_096
+        )
+
+        _ = try fixture.directory("SwiftTool/.build/debug")
+        try fixture.file("SwiftTool/Package.swift", contents: "// swift-tools-version: 5.9")
+        try fixture.dataFile("SwiftTool/.build/debug/tool", byteCount: 2_048)
+
+        let snapshot = try await ArtifactScanner().scan(
+            configuration: ScanConfiguration(
+                automaticDiscoveryRoot: fixture.url,
+                explicitRoots: [fixture.url]
+            )
+        )
+
+        XCTAssertTrue(snapshot.artifacts.contains { $0.kind == .xcodeDerivedData })
+        XCTAssertTrue(snapshot.artifacts.contains { $0.kind == .swiftBuild })
+        XCTAssertEqual(
+            snapshot.artifacts.filter { $0.kind == .xcodeDerivedData }.count,
+            1
+        )
+        XCTAssertEqual(
+            snapshot.artifacts.filter { $0.kind == .swiftBuild }.count,
+            1
+        )
+        XCTAssertGreaterThan(snapshot.artifactBytes, 0)
+        XCTAssertEqual(
+            snapshot.artifacts.first(where: { $0.kind == .xcodeDerivedData })?.projectPath,
+            derivedDataProject.deletingLastPathComponent().path
+        )
+    }
+
+    func testSkipsSymbolicLinksInsideKnownXcodeDerivedDataRoot() async throws {
+        let fixture = try TemporaryDirectory()
+        defer { fixture.remove() }
+
+        let derivedData = ProjectLocator.xcodeDerivedDataRoot(in: fixture.url)
+        try FileManager.default.createDirectory(at: derivedData, withIntermediateDirectories: true)
+        let outside = try fixture.directory("Outside")
+        let linked = derivedData.appendingPathComponent("LinkedProject", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: outside)
+
+        let snapshot = try await ArtifactScanner().scan(
+            configuration: ScanConfiguration(
+                automaticDiscoveryRoot: fixture.url,
+                explicitRoots: []
+            )
+        )
+
+        XCTAssertFalse(snapshot.artifacts.contains { $0.path == linked.path })
+    }
+
     func testFindsOnlyFoldersWithMatchingProjectMarkers() async throws {
         let fixture = try TemporaryDirectory()
         defer { fixture.remove() }

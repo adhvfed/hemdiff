@@ -10,7 +10,7 @@ struct LocationsView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Scan locations")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
-                    Text("Projects are discovered from the macOS index. Added folders get a direct, low-priority check.")
+                    Text("Projects are discovered from the macOS index; known Xcode storage is checked directly. Added folders get a low-priority check.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -23,7 +23,7 @@ struct LocationsView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Automatic project discovery")
                                     .font(.body.weight(.medium))
-                                Text("Spotlight index · privacy-managed folders excluded")
+                                Text("Spotlight index · Xcode DerivedData checked directly")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -69,7 +69,7 @@ struct LocationsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 14)
 
-                        Text("Desktop, Documents, Downloads, Movies, Music, Pictures, and Library are only checked when you add them here.")
+                        Text("Privacy-managed folders and other Library contents are only checked when you add them here. Xcode DerivedData is checked at its known path.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,7 +92,7 @@ struct LocationsView: View {
                             policyRow(
                                 icon: "gauge.with.dots.needle.50percent",
                                 title: "Targeted measurement",
-                                detail: "Only discovered target and node_modules folders are measured at utility priority."
+                                detail: "Only discovered build, dependency, and Xcode DerivedData folders are measured at utility priority."
                             )
                             Divider()
                             policyRow(
