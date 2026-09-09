@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct LocationsView: View {
+    @State private var findsProjects = false
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -58,6 +59,8 @@ struct LocationsView: View {
                         }
 
                         Divider()
+                        Button("Find Projects…") { findsProjects = true }
+                            .padding(.top, 14)
                         Button {
                             chooseFolder()
                         } label: {
@@ -111,6 +114,7 @@ struct LocationsView: View {
             .frame(maxWidth: .infinity)
         }
         .navigationTitle("Scan Locations")
+        .sheet(isPresented: $findsProjects) { FindProjectsView().environmentObject(model) }
     }
 
     private var scanDuration: String {

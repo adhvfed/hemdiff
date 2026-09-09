@@ -1,14 +1,14 @@
 # @meaning HemDif macOS application icon
 # Shape definitions are shared with fold.strok; color adjusted for graphite.
-documentsize 100x100
+documentsize 114.634x114.634
 use "./fold.strok" as fold
 shape tile template=rectangle
   round-corners 21
   fill linear(tl, br, #253C42, #101E26)
   stroke none
-place background shape=tile at=3,3 size=94x94
-place upper shape=fold.upper-tail at=0,0
+place background shape=tile at=10.317,10.317 size=94x94
+place upper shape=fold.upper-tail at=7.317,7.317
   fill linear(top, bottom, #2CB4A9, #0C6869)
-place lower shape=fold.lower-tail at=0,0
+place lower shape=fold.lower-tail at=7.317,7.317
   fill linear(top, bottom, #0C6869, #2CB4A9)
-place front shape=fold.ribbon at=0,0
+place front shape=fold.ribbon at=7.317,7.317

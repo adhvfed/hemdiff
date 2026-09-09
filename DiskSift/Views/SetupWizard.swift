@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct SetupWizard: View {
+    @State private var findsProjects = false
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     private let titles = ["Make room for your next build.", "Choose what to scan.", "Include your Trash."]
@@ -49,6 +50,7 @@ struct SetupWizard: View {
             Color(nsColor: .windowBackgroundColor)
             LinearGradient(colors: [DiskSiftTheme.node.opacity(0.06), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
+        .sheet(isPresented: $findsProjects) { FindProjectsView().environmentObject(model) }
         .task(id: model.setupPage) { if model.setupPage == 2 { await model.refreshTrash() } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active && model.setupPage == 2 { Task { await model.refreshTrash() } }
@@ -81,13 +83,16 @@ struct SetupWizard: View {
                     if model.scanRoots.isEmpty { Text("No folders added").foregroundStyle(.secondary) }
                 }.padding(16)
             }.background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
-            Button("Add Folders…") {
+            HStack {
+            Button("Find Automatically") { findsProjects = true }.buttonStyle(.borderedProminent).tint(DiskSiftTheme.node)
+            Button("Choose Folders…") {
                 let panel = NSOpenPanel()
                 panel.canChooseFiles = false
                 panel.canChooseDirectories = true
                 panel.allowsMultipleSelection = true
                 panel.prompt = "Add Folders"
                 if panel.runModal() == .OK { panel.urls.forEach(model.addScanRoot) }
+            }
             }
         }
     }

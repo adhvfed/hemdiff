@@ -9,6 +9,8 @@ The mark uses three named Bézier surfaces: `upper-tail`, `lower-tail`, and
 - `fold.strok`: primary teal mark, transparent background, 100 × 100 canvas.
 - `fold-mono.strok`: a live union of the same geometry with `currentColor` fill.
 - `app-icon.strok`: graphite rounded tile with brighter tails for dark contrast.
+  The tile occupies 82% of its canvas to align optically with neighboring Dock
+  icons; the entire mark and tile scale together.
 
 The latter two import the shapes from `fold.strok`. Edit the master to change
 all versions together. Gradients provide the fold depth; the monochrome mark

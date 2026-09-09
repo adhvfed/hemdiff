@@ -103,3 +103,17 @@ category in Storage to review it directly. Command-F focuses search; Escape
 clears it. Cleanup groups can be collapsed and grouped by Project or Tool. Trash
 supports search, sorting, and checking the visible results. Empty Trash still
 confirms the complete reviewed Trash snapshot, regardless of the search filter.
+
+### Find projects automatically
+
+Use **Find Automatically** on setup’s scan-location step, or **Find Projects…**
+in Scan Locations. Review and check the suggested folders before adding them.
+Already-included locations are marked and are not removed by this dialog.
+
+Discovery reads project markers in familiar project containers, existing Spotlight
+results, and registered Git worktrees. It skips generated/dependency directories,
+symlinks, and privacy-managed home folders. Other locations can be added manually.
+The search has a 20,000-entry budget, depth limit of five, and a 20-second timeout;
+partial results are labeled. It does not measure file sizes or delete anything.
+Outside familiar project containers, suggestions identify individual projects,
+not their potentially unrelated parent folders.
