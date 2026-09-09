@@ -28,12 +28,18 @@ final class AppModel: ObservableObject {
         setupPage = 0
         isShowingSetup = true
     }
-    func finishSetup() {
+    func completeSetup(scanRoots: [URL]) {
+        self.scanRoots = ArtifactScanner.normalizedRoots(scanRoots)
+        persistRoots()
+        finishSetup()
+    }
+
+    func finishSetup(startScan: Bool = true) {
         defaults.set(true, forKey: "setupCompleted")
         defaults.set(false, forKey: "setupInProgress")
         isShowingSetup = false
         setupPage = 0
-        if isSnapshotStale { startScan() }
+        if startScan && isSnapshotStale { self.startScan() }
     }
     @Published var isReviewingDeletion = false
     private let fileOperations: FileOperations

@@ -60,10 +60,12 @@ These are practical project conventions, not a guarantee about custom user data.
 
 ## Setup
 
-On first launch, the setup wizard introduces cleanup, lets you choose scan
-folders, and optionally guides you through Trash access. **Open Full Disk Access**
-opens the matching System Settings pane directly. Enable Hemdiff there and reopen
-it if macOS requests it. Setup progress survives reopening; permission is optional.
+First launch automatically finds and preselects likely workspaces on a single
+setup screen. Review the folders or add your own, then start the first scan with
+one action. Discovery can be stopped while retaining results. Choosing Set Up Later
+does not start a scan immediately. Trash access is explained when you visit Trash,
+rather than blocking setup. Nothing is deleted automatically.
+
 Use **Hemdiff → Run Setup Wizard…** to repeat setup without resetting scan folders.
 
 ## Build
@@ -106,8 +108,8 @@ confirms the complete reviewed Trash snapshot, regardless of the search filter.
 
 ### Find projects automatically
 
-Use **Find Automatically** on setup’s scan-location step, or **Find Projects…**
-in Scan Locations. Review and check the suggested folders before adding them.
+Setup finds workspaces automatically. Use **Find Projects…** in Scan Locations
+to discover more later. Review and check the suggested folders before adding them.
 Already-included locations are marked and are not removed by this dialog.
 
 Discovery searches eligible home folders breadth first and queries Spotlight in

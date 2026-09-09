@@ -150,3 +150,34 @@ extension AppModelTests {
         XCTAssertFalse(controller.applicationShouldTerminateAfterLastWindowClosed(NSApplication.shared))
     }
 }
+
+extension AppModelTests {
+    func testSetupSavesReviewedRootsAndStartsFirstScan() async throws {
+        let fixture = try ModelFixture()
+        defer { fixture.remove() }
+        let root = fixture.url.appendingPathComponent("Work")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let model = fixture.model()
+        model.isShowingSetup = true
+        model.completeSetup(scanRoots: [root, root.appendingPathComponent("child")])
+        XCTAssertEqual(model.scanRoots.map(\.path), [root.path])
+        XCTAssertEqual(fixture.defaults.stringArray(forKey: "scanRootPaths"), [root.path])
+        XCTAssertTrue(fixture.defaults.bool(forKey: "setupCompleted"))
+        XCTAssertFalse(model.isShowingSetup)
+        XCTAssertTrue(model.isScanning)
+        try await waitForScan(model)
+        XCTAssertNotEqual(model.snapshot.finishedAt, .distantPast)
+    }
+
+    func testSetupLaterDoesNotImmediatelyStartScanOrChangeRoots() throws {
+        let fixture = try ModelFixture()
+        defer { fixture.remove() }
+        let model = fixture.model()
+        let roots = model.scanRoots
+        model.isShowingSetup = true
+        model.finishSetup(startScan: false)
+        XCTAssertFalse(model.isScanning)
+        XCTAssertEqual(model.scanRoots, roots)
+        XCTAssertFalse(model.isShowingSetup)
+    }
+}
