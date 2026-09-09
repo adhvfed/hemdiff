@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import DiskSift
@@ -119,5 +120,33 @@ private final class ModelFixture {
     func remove() {
         defaults.removePersistentDomain(forName: suite)
         try? FileManager.default.removeItem(at: url)
+    }
+}
+
+extension AppModelTests {
+    func testNativeStatusItemCanBeCreatedHiddenAndRestored() throws {
+        let suite = "HemdiffStatusTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let controller = MenuBarController(defaults: defaults, autosaveName: suite)
+        defer {
+            controller.removeStatusItem()
+            defaults.removePersistentDomain(forName: suite)
+        }
+        controller.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+        let initial = try XCTUnwrap(controller.statusItem)
+        XCTAssertTrue(initial.isVisible)
+        XCTAssertNotNil(initial.button?.window)
+        XCTAssertGreaterThan(initial.button?.bounds.width ?? 0, 0)
+        XCTAssertEqual(initial.button?.image?.size.width, 22)
+        initial.isVisible = false
+        controller.updateVisibility()
+        XCTAssertTrue(initial.isVisible)
+        defaults.set(false, forKey: "showsMenuBarExtra")
+        controller.updateVisibility()
+        XCTAssertNil(controller.statusItem)
+        defaults.set(true, forKey: "showsMenuBarExtra")
+        controller.updateVisibility()
+        XCTAssertTrue(try XCTUnwrap(controller.statusItem).isVisible)
+        XCTAssertFalse(controller.applicationShouldTerminateAfterLastWindowClosed(NSApplication.shared))
     }
 }

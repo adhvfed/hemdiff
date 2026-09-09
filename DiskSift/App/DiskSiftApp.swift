@@ -3,12 +3,14 @@ import SwiftUI
 @main
 struct DiskSiftApp: App {
     @StateObject private var model = AppModel()
+    @NSApplicationDelegateAdaptor(MenuBarController.self) private var menuBar
     @AppStorage("showsMenuBarExtra") private var showsMenuBarExtra = true
 
     var body: some Scene {
         Window("Hemdiff", id: "main") {
             RootView()
                 .environmentObject(model)
+                .background(MenuBarInstaller(controller: menuBar, model: model))
                 .frame(minWidth: 780, minHeight: 560)
         }
         .defaultSize(width: 1040, height: 720)
@@ -24,15 +26,6 @@ struct DiskSiftApp: App {
             }
         }
 
-        MenuBarExtra(isInserted: $showsMenuBarExtra) {
-            MenuBarPanel()
-                .environmentObject(model)
-        } label: {
-            Image(nsImage: MenuBarIcon.image)
-                .renderingMode(.template)
-                .accessibilityLabel("Hemdiff")
-        }
-        .menuBarExtraStyle(.window)
     }
 }
 
@@ -47,15 +40,5 @@ private struct SetupCommands: Commands {
                 model.showSetup()
             }.disabled(model.isReviewingDeletion || model.isManagingFiles || !model.reclaimingArtifactIDs.isEmpty)
         }
-    }
-}
-
-enum MenuBarIcon {
-    static var image: NSImage {
-        let image = (NSImage(named: "MenuBarIcon")?.copy() as? NSImage) ??
-            NSImage(systemSymbolName: "externaldrive", accessibilityDescription: "Hemdiff")!
-        image.size = NSSize(width: 22, height: 22)
-        image.isTemplate = true
-        return image
     }
 }

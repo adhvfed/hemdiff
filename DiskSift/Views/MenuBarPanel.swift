@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MenuBarPanel: View {
+    var openMainWindow: (() -> Void)?
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var model: AppModel
     var body: some View {
@@ -27,8 +28,7 @@ struct MenuBarPanel: View {
             } else {
                 Button {
                     model.requestQuickCleanup()
-                    openWindow(id: "main")
-                    NSApp.activate(ignoringOtherApps: true)
+                    showMainWindow()
                 } label: {
                     Label("Clean Build Output…", systemImage: "shippingbox")
                         .frame(maxWidth: .infinity)
@@ -37,12 +37,17 @@ struct MenuBarPanel: View {
             }
             Divider()
             HStack {
-                Button("Open Hemdiff") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }.keyboardShortcut(.defaultAction)
+                Button("Open Hemdiff") { showMainWindow() }.keyboardShortcut(.defaultAction)
                 Spacer()
                 Button(model.isScanning ? "Cancel Scan" : "Scan Now") { model.isScanning ? model.cancelScan() : model.startScan() }.disabled(!model.isScanning && (model.isBusy || model.isShowingSetup || model.isReviewingDeletion))
             }
         }.padding(20).frame(width: 330)
     }
+    private func showMainWindow() {
+        if let openMainWindow { openMainWindow() }
+        else { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
+    }
+
     private func metric(_ name: String, bytes: Int64, icon: String, color: Color, available: Bool = true) -> some View {
         HStack {
             Label(name, systemImage: icon).foregroundStyle(color)
