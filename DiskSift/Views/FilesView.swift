@@ -54,7 +54,7 @@ struct FilesView: View {
                                     else if !checkedOnly && review.items.isEmpty { ContentUnavailableView.search(text: review.search) }
                                 }
                             HStack(spacing: 10) {
-                                Text(checkedOnly ? "\(review.checked.count) checked items" : "\(review.count == 0 ? 0 : review.offset + 1)–\(min(review.offset + review.pageSize, review.count)) of \(review.count.formatted())")
+                                Text(checkedOnly ? "\(review.checked.count) checked" : "\(review.count == 0 ? 0 : review.offset + 1)–\(min(review.offset + review.pageSize, review.count)) of \(review.count.formatted())")
                                     .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                                 Spacer()
                                 Button { Task { await review.load(inventory, offset: max(0, review.offset - review.pageSize)) } } label: { Image(systemName: "chevron.left") }
@@ -70,6 +70,7 @@ struct FilesView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { selectionTray }
         .navigationTitle("Files")
+        .onChange(of: review.checked.isEmpty) { _, empty in if empty { checkedOnly = false } }
         .task(id: queryKey) { await review.load(inventory) }
         .sheet(item: $confirmation) { pending in
             FileConfirmationSheet(confirmation: pending) {
@@ -85,7 +86,7 @@ struct FilesView: View {
 
     private var categoryList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 3) {
                 Button { review.kinds = [] } label: {
                     HStack {
                         Image(systemName: review.kinds.isEmpty ? "checkmark.square.fill" : "square")
@@ -101,16 +102,12 @@ struct FilesView: View {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: review.kinds.contains(summary.kind) ? "checkmark.square.fill" : summary.kind.icon)
                                 .foregroundStyle(summary.kind.color).frame(width: 18).padding(.top, 2)
-                            VStack(alignment: .leading, spacing: 5) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(summary.kind.title).font(.callout.weight(.medium))
                                 Text(ByteText.string(summary.allocatedBytes)).font(.caption).foregroundStyle(.secondary)
-                                GeometryReader { proxy in
-                                    Capsule().fill(summary.kind.color.opacity(0.12))
-                                    Capsule().fill(summary.kind.color).frame(width: max(2, proxy.size.width * Double(summary.allocatedBytes) / Double(max(1, inventory.allocatedBytes))))
-                                }.frame(height: 3)
                             }
                             Spacer(minLength: 0)
-                        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
                             .background(review.kinds.contains(summary.kind) ? summary.kind.color.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 10))
                             .contentShape(Rectangle())
                     }.buttonStyle(.plain)
@@ -121,14 +118,35 @@ struct FilesView: View {
     }
 
     private var selectionTray: some View {
-        HStack(spacing: 16) {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                selectionSummary.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 12)
+                selectionActions.fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                selectionSummary
+                HStack { Spacer(); selectionActions }
+            }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 16)
+        .background(.bar).overlay(alignment: .top) { Divider() }
+    }
+
+    private var selectionSummary: some View {
+        HStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill").font(.title2).foregroundStyle(DiskSiftTheme.node)
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(review.checked.count) checked · \(ByteText.string(review.checkedBytes))").font(.callout.weight(.semibold)).monospacedDigit()
-                Text("↑ ↓ to navigate · Space to check · ⌘Y to preview").font(.caption).foregroundStyle(.secondary)
+                Text("↑ ↓ navigate · Space check · ⌘Y preview").font(.caption).foregroundStyle(.secondary)
             }
-            Spacer(minLength: 8)
+        }
+    }
+
+    private var selectionActions: some View {
+        HStack(spacing: 10) {
             if !review.checked.isEmpty {
+                Toggle("Checked only", isOn: $checkedOnly).toggleStyle(.button)
                 Button("Clear") { review.clear() }.help("Uncheck all files")
             }
             Menu {
@@ -140,12 +158,10 @@ struct FilesView: View {
                 }.keyboardShortcut("y", modifiers: .command)
             } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).frame(width: 28)
             Button("Move to Trash…") { confirmation = FileConfirmation(items: review.checkedItems, permanent: false) }
-                .buttonStyle(.borderedProminent).tint(DiskSiftTheme.node)
+                .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
                 .disabled(review.checked.isEmpty || model.isBusy)
                 .keyboardShortcut(.delete, modifiers: .command)
         }
-        .padding(.horizontal, 28).padding(.vertical, 18)
-        .background(.bar).overlay(alignment: .top) { Divider() }
     }
 
     private func categoryBinding(_ kind: ContentKind) -> Binding<Bool> {

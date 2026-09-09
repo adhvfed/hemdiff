@@ -23,7 +23,6 @@ struct SpaceHero: View {
     let bytes: Int64
     let subtitle: String
     var color: Color = DiskSiftTheme.node
-    var fraction: Double = 0
     var trailing: String = ""
     var isAvailable = true
 
@@ -31,22 +30,12 @@ struct SpaceHero: View {
         HStack(spacing: 28) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.secondary)
-                Text(isAvailable ? ByteText.compact(bytes) : "—")
+                Text(isAvailable ? ByteText.string(bytes) : "—")
                     .font(.system(size: 36, weight: .semibold, design: .rounded))
                     .tracking(-1.5).monospacedDigit().contentTransition(.numericText())
                 Text(subtitle).font(.callout).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            ZStack {
-                Circle().stroke(color.opacity(0.12), lineWidth: 9)
-                Circle().trim(from: 0, to: min(1, max(0, fraction)))
-                    .stroke(color.gradient, style: StrokeStyle(lineWidth: 9, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Image(systemName: "arrow.down.right")
-                    .font(.system(size: 27, weight: .medium)).foregroundStyle(color)
-            }
-            .frame(width: 64, height: 64)
-            .accessibilityHidden(true)
             if !trailing.isEmpty { Text(trailing).font(.caption).foregroundStyle(.secondary) }
         }
         .padding(20)
@@ -95,6 +84,9 @@ struct FileItemTable: View {
                 Text(item.modifiedAt?.formatted(date: .abbreviated, time: .omitted) ?? "—").foregroundStyle(.secondary)
             }.width(90)
         }
+        .tableStyle(.inset(alternatesRowBackgrounds: false))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.08), lineWidth: 1))
         .onKeyPress(.space) { toggleFocused(); return .handled }
         .contextMenu(forSelectionType: String.self) { ids in
             if let item = items.first(where: { ids.contains($0.path) }) {
@@ -123,7 +115,7 @@ struct FilePreview: View {
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }.padding(16)
             QuickLookFile(url: item.url)
-        }.frame(minWidth: 560, minHeight: 420)
+        }.frame(minWidth: 560, minHeight: 420).buttonStyle(HemdiffButtonStyle())
     }
 }
 
@@ -153,7 +145,7 @@ struct FileConfirmationSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             Label(confirmation.permanent ? "Delete from Trash?" : "Move to Trash?", systemImage: confirmation.permanent ? "trash.slash" : "trash")
                 .font(.title2.weight(.semibold))
-            Text("\(confirmation.items.count.formatted()) items · \(ByteText.string(confirmation.items.reduce(0) { $0 + $1.allocatedBytes }))")
+            Text("\(confirmation.items.count.formatted()) \(confirmation.items.count == 1 ? "item" : "items") · \(ByteText.string(confirmation.items.reduce(0) { $0 + $1.allocatedBytes }))")
                 .font(.title3).monospacedDigit()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
@@ -177,9 +169,9 @@ struct FileConfirmationSheet: View {
                 Button(confirmation.permanent ? "Delete Permanently" : "Move to Trash", role: .destructive) {
                     dismiss()
                     confirm()
-                }.buttonStyle(.borderedProminent).tint(confirmation.permanent ? DiskSiftTheme.rust : DiskSiftTheme.node).disabled(model.isBusy)
+                }.buttonStyle(HemdiffButtonStyle(emphasis: confirmation.permanent ? .destructive : .primary)).disabled(model.isBusy)
             }
-        }.padding(24).frame(width: 560)
+        }.padding(24).frame(width: 560).buttonStyle(HemdiffButtonStyle())
         .onAppear { model.isReviewingDeletion = true }
         .onDisappear { model.isReviewingDeletion = false }
     }

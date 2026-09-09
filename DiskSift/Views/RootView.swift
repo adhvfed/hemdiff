@@ -99,7 +99,12 @@ struct RootView: View {
             SetupWizard().environmentObject(model).interactiveDismissDisabled()
         }
         .tint(DiskSiftTheme.node)
+        .buttonStyle(HemdiffButtonStyle())
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(model.isScanning ? "Scanning…" : "\(model.scanRoots.count) scan locations")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if model.destination != .overview {
             ToolbarItem(placement: .primaryAction) {
                 Button {

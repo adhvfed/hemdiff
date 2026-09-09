@@ -30,9 +30,9 @@ struct OverviewView: View {
                     }
                 }
                 HStack(alignment: .top, spacing: 14) {
-                    recoveryCard("Build output", subtitle: "\(model.snapshot.artifacts.count) folders · Can be rebuilt",
+                    recoveryCard("Build output", subtitle: model.snapshot.artifacts.isEmpty ? "No build output to clean" : "\(model.snapshot.artifacts.count) folders · Can be rebuilt",
                                  bytes: model.snapshot.artifactBytes, icon: "shippingbox", color: DiskSiftTheme.node, action: openReclaim)
-                    recoveryCard("Trash", subtitle: model.trashSnapshot.hasEstimate ? "\(model.trashSnapshot.items.count) items · Empty to reclaim" : "Allow access to measure",
+                    recoveryCard("Trash", subtitle: model.trashSnapshot.hasEstimate ? "\(model.trashSnapshot.items.count) \(model.trashSnapshot.items.count == 1 ? "item" : "items") · Empty to reclaim" : "Allow access to measure",
                                  bytes: model.trashSnapshot.bytes, icon: "trash", color: DiskSiftTheme.rust,
                                  available: model.trashSnapshot.hasEstimate, action: openTrash)
                 }
@@ -90,9 +90,15 @@ struct OverviewView: View {
                     Button(model.isScanning ? "Cancel Scan" : "Scan Now") {
                         model.isScanning ? model.cancelScan() : model.startScan()
                     }.disabled(!model.isScanning && (model.isBusy || model.isReviewingDeletion))
+                    if model.snapshot.artifacts.isEmpty {
+                        Button("Review Large Files") { openFiles(nil) }
+                            .buttonStyle(HemdiffButtonStyle(emphasis: .primary))
+                            .disabled(model.snapshot.content.count == 0)
+                    } else {
                     Button("Clean Build Output…") { model.requestQuickCleanup() }
-                        .buttonStyle(.borderedProminent).tint(DiskSiftTheme.node)
+                        .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
                         .disabled(model.snapshot.artifacts.isEmpty || model.isBusy || model.isReviewingDeletion)
+                    }
                     if model.isSnapshotStale && model.snapshot.finishedAt != .distantPast {
                         Label("Scan needed", systemImage: "clock").font(.caption).foregroundStyle(.orange)
                     }
@@ -172,7 +178,7 @@ struct OverviewView: View {
                     Spacer()
                     Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(color)
                 }
-                Text(available ? ByteText.compact(bytes) : "—")
+                Text(available ? ByteText.string(bytes) : "—")
                     .font(.system(size: 25, weight: .semibold, design: .rounded)).monospacedDigit()
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }.padding(18).frame(maxWidth: .infinity, alignment: .leading)

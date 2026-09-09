@@ -32,7 +32,7 @@ struct MenuBarPanel: View {
                 } label: {
                     Label("Clean Build Output…", systemImage: "shippingbox")
                         .frame(maxWidth: .infinity)
-                }.buttonStyle(.borderedProminent).tint(DiskSiftTheme.node)
+                }.buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
                     .disabled(model.snapshot.artifacts.isEmpty || model.isBusy || model.isReviewingDeletion)
             }
             Divider()
@@ -41,7 +41,7 @@ struct MenuBarPanel: View {
                 Spacer()
                 Button(model.isScanning ? "Cancel Scan" : "Scan Now") { model.isScanning ? model.cancelScan() : model.startScan() }.disabled(!model.isScanning && (model.isBusy || model.isShowingSetup || model.isReviewingDeletion))
             }
-        }.padding(20).frame(width: 330)
+        }.padding(20).frame(width: 350).buttonStyle(HemdiffButtonStyle())
     }
     private func showMainWindow() {
         if let openMainWindow { openMainWindow() }
@@ -52,7 +52,7 @@ struct MenuBarPanel: View {
         HStack {
             Label(name, systemImage: icon).foregroundStyle(color)
             Spacer()
-            Text(available ? ByteText.compact(bytes) : "—").fontWeight(.semibold).monospacedDigit()
+            Text(available ? ByteText.string(bytes) : "—").fontWeight(.semibold).monospacedDigit()
         }.font(.callout)
     }
 }

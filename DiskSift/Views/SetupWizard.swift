@@ -83,11 +83,11 @@ struct SetupWizard: View {
                     searchTask?.cancel()
                     model.completeSetup(scanRoots: selection.selected)
                 }
-                .buttonStyle(.borderedProminent).tint(DiskSiftTheme.node)
+                .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
                 .keyboardShortcut(.defaultAction).disabled(selection.selected.isEmpty)
             }
         }
-        .padding(28).frame(width: 580, height: 520)
+        .padding(28).frame(width: 580, height: 520).buttonStyle(HemdiffButtonStyle())
         .background {
             Color(nsColor: .windowBackgroundColor)
             LinearGradient(colors: [DiskSiftTheme.node.opacity(0.06), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)

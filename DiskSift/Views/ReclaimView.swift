@@ -26,23 +26,37 @@ struct ReclaimView: View {
             HStack {
                 Text("Build output").font(.system(size: 30, weight: .bold, design: .rounded)).tracking(-0.6)
                 Spacer()
+                if !model.snapshot.artifacts.isEmpty {
                 Picker("Group by", selection: $groupByProject) {
                     Text("Project").tag(true)
                     Text("Tool").tag(false)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 160)
+                }
             }
+            if !model.snapshot.artifacts.isEmpty {
             SpaceHero(title: "Rebuildable storage", bytes: model.snapshot.artifactBytes,
-                      subtitle: "\(model.snapshot.artifacts.count) folders across \(Set(model.snapshot.artifacts.map(\.projectPath)).count) projects",
-                      fraction: Double(model.snapshot.artifactBytes) / Double(max(1, model.volume?.usedBytes ?? model.snapshot.artifactBytes)))
+                      subtitle: "\(model.snapshot.artifacts.count) folders across \(Set(model.snapshot.artifacts.map(\.projectPath)).count) projects")
+            }
             ModelMessages()
+            if !model.snapshot.artifacts.isEmpty {
             HStack {
                 ReviewSearchField(placeholder: "Search project or path", text: $search)
                 Picker("Tool", selection: $family) {
                     Text("All tools").tag("All tools")
                     ForEach(Array(Set(model.snapshot.artifacts.map { $0.kind.family })).sorted(), id: \.self) { Text($0).tag($0) }
                 }.frame(width: 180)
-                Button("Check Visible") { model.select(visible) }
+                Button("Check Visible") { model.select(visible) }.disabled(visible.isEmpty)
             }
+            }
+            if model.snapshot.artifacts.isEmpty {
+                VStack(spacing: 0) {
+                ReviewEmptyState(title: model.isScanning ? "Looking for build output…" : "No build output to clean", detail: "Scan again after building, or review large files in Files.", icon: "checkmark.seal", fillsSpace: false)
+                HStack {
+                    Button("Review Large Files") { model.destination = .files }
+                    Button("Scan Now") { model.startScan() }.disabled(model.isBusy)
+                }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(groups, id: \.name) { group in
@@ -81,11 +95,13 @@ struct ReclaimView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator.opacity(0.4), lineWidth: 0.5))
                     }
-                    if visible.isEmpty { ContentUnavailableView("No matching build folders", systemImage: "shippingbox") }
+                    if visible.isEmpty { ReviewEmptyState(title: "No matching build folders", detail: "Try another search or choose All tools.", icon: "magnifyingglass") }
                 }
+            }
             }
         }.padding(24)
         .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !model.snapshot.artifacts.isEmpty {
             HStack(spacing: 14) {
                 Image(systemName: "shippingbox.fill").font(.title2).foregroundStyle(DiskSiftTheme.node)
                 VStack(alignment: .leading, spacing: 3) {
@@ -95,9 +111,10 @@ struct ReclaimView: View {
                 Spacer()
                 Button("Clear") { model.deselectAll() }.disabled(model.selectedArtifactIDs.isEmpty)
                 Button("Delete Build Output…") { pending = model.selectedArtifacts; confirmsReclaim = true }
-                    .buttonStyle(.borderedProminent).tint(DiskSiftTheme.node)
+                    .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
                     .disabled(model.selectedArtifactIDs.isEmpty || model.isBusy)
             }.padding(.horizontal, 28).padding(.vertical, 18).background(.bar).overlay(alignment: .top) { Divider() }
+            }
         }
         .navigationTitle("Cleanup")
         .onChange(of: model.pendingQuickCleanup, initial: true) { _, requested in
@@ -128,9 +145,9 @@ struct ReclaimView: View {
                         let reviewed = pending
                         confirmsReclaim = false
                         Task { await model.reclaimReviewed(reviewed) }
-                    }.buttonStyle(.borderedProminent).tint(DiskSiftTheme.rust).disabled(model.isBusy)
+                    }.buttonStyle(HemdiffButtonStyle(emphasis: .destructive)).disabled(model.isBusy)
                 }
-            }.padding(24).frame(width: 560)
+            }.padding(24).frame(width: 560).buttonStyle(HemdiffButtonStyle())
                 .onAppear { model.isReviewingDeletion = true }
                 .onDisappear { model.isReviewingDeletion = false }
         }

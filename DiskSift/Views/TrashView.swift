@@ -22,8 +22,7 @@ struct TrashView: View {
                 Button("Open in Finder") { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")) }
             }
             SpaceHero(title: "Estimated space to recover", bytes: trash.bytes,
-                      subtitle: trash.hasEstimate ? "\(trash.items.count.formatted()) accessible items" : "Access needed to measure Trash", color: DiskSiftTheme.rust,
-                      fraction: Double(trash.bytes) / Double(max(1, model.volume?.usedBytes ?? trash.bytes)),
+                      subtitle: trash.hasEstimate ? "\(trash.items.count.formatted()) \(trash.items.count == 1 ? "item" : "items") in Trash" : "Access needed to measure Trash", color: DiskSiftTheme.rust,
                       isAvailable: trash.hasEstimate)
             ModelMessages()
             if !trash.unavailableRoots.isEmpty {
@@ -52,7 +51,7 @@ struct TrashView: View {
                     Picker("Sort", selection: $order) {
                         ForEach(FileOrder.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }.frame(width: 145)
-                    Button("Check Visible") { checked.formUnion(visible.map(\.path)) }
+                    Button("Check Visible") { checked.formUnion(visible.map(\.path)) }.disabled(visible.isEmpty)
                 }
                 FileItemTable(items: visible, focused: $focused, checked: checked, toggle: toggle, toggleFocused: {
                     let items = visible.filter { focused.contains($0.path) }
@@ -82,7 +81,7 @@ struct TrashView: View {
                         .disabled(model.isBusy)
                 }
                 Button("Empty Trash…") { confirmation = FileConfirmation(items: trash.items, permanent: true) }
-                    .buttonStyle(.borderedProminent).tint(DiskSiftTheme.rust)
+                    .buttonStyle(HemdiffButtonStyle(emphasis: .destructive))
                     .disabled(trash.items.isEmpty || model.isBusy)
             }.padding(.horizontal, 28).padding(.vertical, 18).background(.bar).overlay(alignment: .top) { Divider() }
         }

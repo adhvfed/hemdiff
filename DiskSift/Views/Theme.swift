@@ -49,3 +49,49 @@ struct StatusMessage: View {
             .background(tint.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
     }
 }
+
+/// Shared controls keep keyboard behavior while giving actions a clear hierarchy.
+struct HemdiffButtonStyle: ButtonStyle {
+    enum Emphasis { case secondary, primary, destructive }
+    var emphasis: Emphasis = .secondary
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.colorScheme) private var scheme
+    @State private var hovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let prominent = emphasis != .secondary
+        let accent = emphasis == .destructive ? Color(red: 0.72, green: 0.23, blue: 0.13) : Color(red: 0.08, green: 0.43, blue: 0.43)
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .padding(.horizontal, 13).padding(.vertical, 9)
+            .foregroundStyle(prominent ? Color.white : Color.primary)
+            .background {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(prominent ? accent : Color.primary.opacity(scheme == .dark ? 0.075 : 0.045))
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(Color.white.opacity(configuration.isPressed ? 0 : hovered ? 0.10 : 0))
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(prominent ? Color.white.opacity(0.14) : Color.primary.opacity(hovered ? 0.22 : 0.12), lineWidth: 1)
+            }
+            .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.38)
+            .contentShape(RoundedRectangle(cornerRadius: 9))
+            .onHover { hovered = $0 }
+    }
+}
+
+struct ReviewEmptyState: View {
+    let title: String
+    let detail: String
+    let icon: String
+    var fillsSpace = true
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 30, weight: .light))
+                .foregroundStyle(DiskSiftTheme.node)
+                .frame(width: 68, height: 68)
+                .background(DiskSiftTheme.node.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+            Text(title).font(.system(size: 21, weight: .semibold, design: .rounded))
+            Text(detail).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }.frame(maxWidth: .infinity, maxHeight: fillsSpace ? .infinity : nil).padding(24)
+    }
+}

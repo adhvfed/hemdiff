@@ -62,9 +62,9 @@ struct FindProjectsView: View {
                     searchTask?.cancel()
                     for url in selection.selected where !included(url) { model.addScanRoot(url) }
                     dismiss()
-                }.buttonStyle(.borderedProminent).tint(DiskSiftTheme.node).disabled(selection.selected.isEmpty && !allIncluded)
+                }.buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node).disabled(selection.selected.isEmpty && !allIncluded)
             }
-        }.padding(24).frame(width: 580, height: 480)
+        }.padding(24).frame(width: 580, height: 480).buttonStyle(HemdiffButtonStyle())
         .onAppear {
             searchTask = Task {
                 let found = await finder.find { update in
