@@ -9,8 +9,8 @@ enum AppDestination: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .overview: "Overview"
-        case .reclaim: "Reclaim"
+        case .overview: "Storage"
+        case .reclaim: "Cleanup"
         case .locations: "Scan Locations"
         }
     }
@@ -78,16 +78,8 @@ private struct SidebarStatus: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(model.isScanning ? DiskSiftTheme.node : .secondary.opacity(0.55))
-                    .frame(width: 7, height: 7)
-                Text(model.isScanning ? "Scanning" : "Monitor ready")
-                    .font(.caption.weight(.medium))
-            }
-
             if let progress = model.scanProgress {
-                Text("\(progress.entriesVisited.formatted()) entries · \(progress.artifactsFound) found")
+                Text("Scanning · \(progress.artifactsFound) folders")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -96,7 +88,7 @@ private struct SidebarStatus: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                Text("Waiting for first scan")
+                Text("Not scanned yet")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

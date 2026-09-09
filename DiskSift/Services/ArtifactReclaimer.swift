@@ -11,9 +11,9 @@ enum ReclaimValidationError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .missing: "The folder no longer exists."
-        case .symbolicLink: "Symbolic links cannot be reclaimed."
+        case .symbolicLink: "Symbolic links can’t be deleted here."
         case .unexpectedPath: "The folder no longer matches the scanned project."
-        case .changedSinceScan: "The folder changed since the scan. Scan again before cleaning it."
+        case .changedSinceScan: "Folder changed since the scan. Scan again."
         case .missingProjectMarker: "The project marker no longer exists."
         case .missingContainer: "The known storage container no longer exists."
         }

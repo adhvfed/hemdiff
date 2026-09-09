@@ -110,7 +110,7 @@ final class AppModel: ObservableObject {
         scanGeneration = UUID()
         isScanning = true
         scanProgress = ScanProgress(
-            currentPath: "Using the macOS project index",
+            currentPath: "Finding projects…",
             entriesVisited: 0,
             artifactsFound: 0,
             bytesMeasured: 0
@@ -141,7 +141,7 @@ final class AppModel: ObservableObject {
                 do {
                     try store.save(completed)
                 } catch {
-                    self.errorMessage = "The scan finished, but its cache could not be saved."
+                    self.errorMessage = "Couldn’t save scan results."
                 }
             } catch is CancellationError {
                 // Preserve the previous inventory.
@@ -180,7 +180,7 @@ final class AppModel: ObservableObject {
 
     func reclaim(_ artifact: Artifact) async {
         guard let currentArtifact = snapshot.artifacts.first(where: { $0.id == artifact.id }) else {
-            errorMessage = "That folder is no longer in the current inventory. Scan again before cleaning it."
+            errorMessage = "Folder missing from scan results. Scan again."
             return
         }
         await reclaim([currentArtifact])
@@ -189,12 +189,12 @@ final class AppModel: ObservableObject {
     private func reclaim(_ artifacts: [Artifact]) async {
         guard !artifacts.isEmpty else { return }
         guard !isScanning, reclaimingArtifactIDs.isEmpty else {
-            errorMessage = "Wait for the current scan or cleanup to finish before deleting folders."
+            errorMessage = "Wait for the scan or cleanup to finish."
             return
         }
         let artifactIDs = Set(artifacts.map(\.id))
         guard reclaimingArtifactIDs.isDisjoint(with: artifactIDs) else {
-            errorMessage = "Cleanup is already in progress for one of those folders."
+            errorMessage = "Folder deletion is already in progress."
             return
         }
 
@@ -209,7 +209,7 @@ final class AppModel: ObservableObject {
             selectedArtifactIDs.subtract(result.reclaimedIDs)
             try? snapshotStore.save(snapshot)
             refreshVolume()
-            noticeMessage = "Permanently deleted \(result.reclaimedIDs.count) folder\(result.reclaimedIDs.count == 1 ? "" : "s") and reclaimed \(ByteText.compact(result.reclaimedBytes))."
+            noticeMessage = "Deleted \(result.reclaimedIDs.count) folder\(result.reclaimedIDs.count == 1 ? "" : "s") (\(ByteText.compact(result.reclaimedBytes)))."
         }
 
         if !result.failures.isEmpty {

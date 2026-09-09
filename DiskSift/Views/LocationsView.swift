@@ -8,11 +8,8 @@ struct LocationsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Scan locations")
+                    Text("Scan Locations")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
-                    Text("Projects are discovered from the macOS index and Git worktree registrations. Added folders and known Xcode storage are checked directly.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
                 }
 
                 Panel {
@@ -21,9 +18,9 @@ struct LocationsView: View {
                             Image(systemName: "magnifyingglass")
                                 .foregroundStyle(DiskSiftTheme.node)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Automatic project discovery")
+                                Text("Automatic scan")
                                     .font(.body.weight(.medium))
-                                Text("Spotlight index · Xcode DerivedData checked directly")
+                                Text("Indexed projects, Git worktrees & Xcode builds")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -69,38 +66,11 @@ struct LocationsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 14)
 
-                        Text("Privacy-managed folders and other Library contents are only checked when you add them here. Xcode DerivedData is checked at its known path.")
+                        Text("Missing a project? Add its folder here.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 12)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Refresh policy")
-                        .font(.title3.weight(.semibold))
-
-                    Panel {
-                        VStack(alignment: .leading, spacing: 18) {
-                            policyRow(
-                                icon: "magnifyingglass",
-                                title: "Indexed discovery",
-                                detail: "DiskSift uses the macOS index and checks registered Git worktrees directly, including hidden checkouts. Privacy-managed locations still require an added folder."
-                            )
-                            Divider()
-                            policyRow(
-                                icon: "gauge.with.dots.needle.50percent",
-                                title: "Targeted measurement",
-                                detail: "Only discovered build, dependency, and Xcode DerivedData folders are measured at utility priority."
-                            )
-                            Divider()
-                            policyRow(
-                                icon: "arrow.triangle.2.circlepath",
-                                title: "Capacity refreshes separately",
-                                detail: "Free-space updates never trigger a directory walk."
-                            )
-                        }
                     }
                 }
 
@@ -111,8 +81,7 @@ struct LocationsView: View {
                         Panel {
                             HStack(spacing: 28) {
                                 diagnostic("Duration", value: scanDuration)
-                                diagnostic("Entries measured", value: (model.snapshot.filesVisited + model.snapshot.directoriesVisited).formatted())
-                                diagnostic("Artifacts", value: model.snapshot.artifacts.count.formatted())
+                                diagnostic("Folders", value: model.snapshot.artifacts.count.formatted())
                                 diagnostic("Skipped", value: model.snapshot.errorsSkipped.formatted())
                                 Spacer()
                             }
@@ -121,7 +90,7 @@ struct LocationsView: View {
                 }
 
                 HStack {
-                    Button(model.isScanning ? "Cancel Scan" : "Refresh Inventory") {
+                    Button(model.isScanning ? "Cancel Scan" : "Scan Now") {
                         model.isScanning ? model.cancelScan() : model.startScan()
                     }
                     .buttonStyle(.borderedProminent)
@@ -130,7 +99,7 @@ struct LocationsView: View {
                     if model.isScanning, let progress = model.scanProgress {
                         ProgressView()
                             .controlSize(.small)
-                        Text("\(progress.entriesVisited.formatted()) entries checked")
+                        Text("\(progress.artifactsFound) folders measured")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -146,22 +115,6 @@ struct LocationsView: View {
     private var scanDuration: String {
         let seconds = model.snapshot.finishedAt.timeIntervalSince(model.snapshot.startedAt)
         return Duration.seconds(seconds).formatted(.units(allowed: [.minutes, .seconds], width: .abbreviated))
-    }
-
-    private func policyRow(icon: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 17))
-                .foregroundStyle(DiskSiftTheme.node)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.body.weight(.medium))
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 
     private func diagnostic(_ title: String, value: String) -> some View {

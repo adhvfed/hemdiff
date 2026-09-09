@@ -105,28 +105,28 @@ struct ArtifactRow: View {
             .buttonStyle(.borderless)
             .disabled(model.isScanning || !model.reclaimingArtifactIDs.isEmpty)
             .help("Permanently delete this folder")
-            .accessibilityLabel("Clean \(artifact.kind.title) for \(artifact.projectName)")
+            .accessibilityLabel("Delete \(artifact.kind.title) for \(artifact.projectName)")
         }
         .contentShape(Rectangle())
         .padding(.vertical, 11)
         .confirmationDialog(
-            "Clean \(artifact.kind.title) for \(artifact.projectName)?",
+            "Delete \(artifact.kind.folderName) for \(artifact.projectName)?",
             isPresented: $confirmsCleanup,
             titleVisibility: .visible
         ) {
-            Button("Delete Folder Permanently", role: .destructive) {
+            Button("Delete Permanently", role: .destructive) {
                 Task { await model.reclaim(artifact) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "Target: \(artifact.path.abbreviatingHome)\n\nDiskSift will verify that this is the same scanned \(artifact.kind.title) folder before permanently deleting it. This cannot be undone."
+                "\(artifact.path.abbreviatingHome)\n\nDeletion skips Trash and cannot be undone."
             )
         }
     }
 
     private var createdText: String {
-        guard let date = artifact.createdAt else { return "Created unknown" }
+        guard let date = artifact.createdAt else { return "Creation date unknown" }
         return "Created \(date.formatted(date: .abbreviated, time: .omitted))"
     }
 }

@@ -59,7 +59,7 @@ struct MenuBarPanel: View {
                     Spacer()
                     ArtifactIcon(kind: .nodeModules, size: 20)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("node_modules")
+                        Text("Node")
                             .font(.caption)
                         Text(ByteText.compact(
                             model.snapshot.bytes(for: .nodeModules)
@@ -106,10 +106,10 @@ struct MenuBarPanel: View {
 
     private var statusText: String {
         if model.isScanning, let progress = model.scanProgress {
-            return "Scanning · \(progress.entriesVisited.formatted()) entries"
+            return "Scanning · \(progress.artifactsFound) folders"
         }
         guard model.snapshot.finishedAt != .distantPast else {
-            return "Preparing first inventory"
+            return "Not scanned yet"
         }
         return "Updated \(model.snapshot.finishedAt.formatted(.relative(presentation: .named)))"
     }

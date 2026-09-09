@@ -61,12 +61,12 @@ struct ReclaimView: View {
 
             if model.snapshot.artifacts.isEmpty {
                 ContentUnavailableView(
-                    "Nothing to reclaim",
+                    "No build files found",
                     systemImage: "checkmark.seal",
                     description: Text(
                         model.isScanning
-                            ? "A scan is currently looking for developer artifacts."
-                            : "Run a scan to refresh the inventory."
+                            ? "Scanning…"
+                            : "Scan again or add a folder in Scan Locations."
                     )
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -76,19 +76,19 @@ struct ReclaimView: View {
 
             selectionBar
         }
-        .navigationTitle("Reclaim")
+        .navigationTitle("Cleanup")
         .confirmationDialog(
-            "Permanently delete selected folders?",
+            "Delete \(model.selectedArtifactIDs.count) selected folder\(model.selectedArtifactIDs.count == 1 ? "" : "s")?",
             isPresented: $confirmsReclaim,
             titleVisibility: .visible
         ) {
-            Button("Delete \(model.selectedArtifactIDs.count) Permanently", role: .destructive) {
+            Button("Delete Permanently", role: .destructive) {
                 Task { await model.reclaimSelected() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This will permanently delete \(ByteText.compact(model.selectedBytes)) of regenerable developer folders. This cannot be undone."
+                "\(ByteText.compact(model.selectedBytes)) selected. Deletion skips Trash and cannot be undone."
             )
         }
     }
@@ -97,17 +97,14 @@ struct ReclaimView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Choose what to reclaim")
+                    Text("Cleanup")
                         .font(.system(size: 27, weight: .bold, design: .rounded))
-                    Text("Every developer folder is revalidated before it is permanently deleted.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
 
             HStack {
-                Picker("Artifact type", selection: $filter) {
+                Picker("Type", selection: $filter) {
                     ForEach(ArtifactFilter.allCases) { item in
                         Text(item.title).tag(item)
                     }
@@ -174,7 +171,7 @@ struct ReclaimView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(selectionTitle)
                         .font(.callout.weight(.semibold))
-                    Text("Deletion bypasses Trash and cannot be undone.")
+                    Text("Deletion skips Trash.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

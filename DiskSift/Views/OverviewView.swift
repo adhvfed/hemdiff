@@ -33,35 +33,22 @@ struct OverviewView: View {
             .frame(maxWidth: 980, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .navigationTitle("Overview")
+        .navigationTitle("Storage")
     }
 
     private var pageHeader: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Your disk, in usable terms.")
+                Text("Storage")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text(headerSubtitle)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
             Spacer()
             if model.isSnapshotStale, model.snapshot.finishedAt != .distantPast {
-                Label("Inventory is stale", systemImage: "clock.badge.exclamationmark")
+                Label("Scan needed", systemImage: "clock.badge.exclamationmark")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.orange)
             }
         }
-    }
-
-    private var headerSubtitle: String {
-        if model.isScanning {
-            return "Refreshing the artifact inventory in the background."
-        }
-        guard model.snapshot.finishedAt != .distantPast else {
-            return "The first artifact scan is starting now."
-        }
-        return "Artifact inventory updated \(model.snapshot.finishedAt.formatted(.relative(presentation: .named)))."
     }
 
     private func capacitySection(_ volume: VolumeSnapshot) -> some View {
@@ -117,15 +104,15 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Regenerable developer storage")
+                    Text("Build files & dependencies")
                         .font(.title3.weight(.semibold))
-                    Text("\(model.snapshot.artifacts.count) folders · \(ByteText.compact(model.snapshot.artifactBytes)) reclaimable")
+                    Text("\(model.snapshot.artifacts.count) folders · \(ByteText.compact(model.snapshot.artifactBytes)) total")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if !model.snapshot.artifacts.isEmpty {
-                    Button("Review All", action: openReclaim)
+                    Button("View All", action: openReclaim)
                 }
             }
 
@@ -135,13 +122,8 @@ struct OverviewView: View {
                         Image(systemName: model.isScanning ? "magnifyingglass" : "checkmark.seal")
                             .font(.system(size: 28))
                             .foregroundStyle(model.isScanning ? DiskSiftTheme.node : .secondary)
-                        Text(model.isScanning ? "Looking for developer artifacts…" : "No developer artifacts found")
+                        Text(model.isScanning ? "Scanning…" : "No build files found")
                             .font(.headline)
-                        Text(model.isScanning
-                             ? "You can keep using DiskSift while the inventory is built."
-                             : "Add another scan location or run a new scan.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 120)
                 } else {
@@ -161,16 +143,13 @@ struct OverviewView: View {
     private var locationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Discovered storage groups")
+                Text("Build files by location")
                     .font(.title3.weight(.semibold))
-                Text("Known developer bytes grouped by their top-level location—not macOS storage categories.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
 
             Panel {
                 if model.snapshot.categories.isEmpty {
-                    Text("Location totals will appear after the scan completes.")
+                    Text("No results yet")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
@@ -208,7 +187,7 @@ private struct ScanProgressStrip: View {
             ProgressView()
                 .controlSize(.small)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(progress.entriesVisited.formatted()) entries checked · \(progress.artifactsFound) artifacts found")
+                Text("\(progress.artifactsFound) folders measured")
                     .font(.caption.weight(.medium))
                     .monospacedDigit()
                 Text(progress.currentPath)
