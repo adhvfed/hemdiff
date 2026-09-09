@@ -40,7 +40,6 @@ final class FileReviewModel: ObservableObject {
             guard token == generation else { return }
             items = result.items
             count = result.count
-            focused.formIntersection(Set(items.map(\.path)))
             error = nil
         } catch {
             guard token == generation else { return }

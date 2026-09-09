@@ -1,200 +1,119 @@
 import SwiftUI
 
-private enum ArtifactFilter: String, CaseIterable, Identifiable {
-    case all
-    case rust
-    case node
-    case apple
-
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .all: "All"
-        case .rust: "Rust"
-        case .node: "Node"
-        case .apple: "Xcode / SwiftPM"
-        }
-    }
-}
-
-private enum ArtifactSort: String, CaseIterable, Identifiable {
-    case size
-    case created
-    case project
-
-    var id: String { rawValue }
-    var title: String { rawValue.capitalized }
-}
-
 struct ReclaimView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var filter: ArtifactFilter = .all
-    @State private var sort: ArtifactSort = .size
+    @State private var family = "All tools"
+    @State private var search = ""
     @State private var confirmsReclaim = false
+    @State private var pending: [Artifact] = []
+    @State private var groupByProject = true
 
-    private var visibleArtifacts: [Artifact] {
-        let filtered = model.snapshot.artifacts.filter { artifact in
-            switch filter {
-            case .all: true
-            case .rust: artifact.kind == .rustTarget
-            case .node: artifact.kind == .nodeModules || artifact.kind == .nextBuild
-            case .apple:
-                artifact.kind == .xcodeDerivedData || artifact.kind == .swiftBuild
-            }
-        }
-        return filtered.sorted { lhs, rhs in
-            switch sort {
-            case .size:
-                lhs.allocatedBytes > rhs.allocatedBytes
-            case .created:
-                (lhs.createdAt ?? .distantPast) < (rhs.createdAt ?? .distantPast)
-            case .project:
-                lhs.projectName.localizedStandardCompare(rhs.projectName) == .orderedAscending
-            }
-        }
+    private var visible: [Artifact] {
+        model.snapshot.artifacts.filter {
+            (family == "All tools" || $0.kind.family == family)
+                && (search.isEmpty || $0.path.localizedStandardContains(search))
+        }.sorted { $0.allocatedBytes > $1.allocatedBytes }
+    }
+    private var groups: [(name: String, artifacts: [Artifact], bytes: Int64)] {
+        Dictionary(grouping: visible, by: { groupByProject ? $0.projectPath : $0.kind.title })
+            .map { key, items in (name: key, artifacts: items, bytes: items.reduce(0) { $0 + $1.allocatedBytes }) }
+            .sorted { $0.bytes > $1.bytes }
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
-            if model.snapshot.artifacts.isEmpty {
-                ContentUnavailableView(
-                    "No build files found",
-                    systemImage: "checkmark.seal",
-                    description: Text(
-                        model.isScanning
-                            ? "Scanning…"
-                            : "Scan again or add a folder in Scan Locations."
-                    )
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                artifactList
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Text("Build output").font(.system(size: 30, weight: .bold, design: .rounded)).tracking(-0.6)
+                Spacer()
+                Toggle("Group by project", isOn: $groupByProject).toggleStyle(.switch).controlSize(.small)
             }
-
-            selectionBar
+            SpaceHero(title: "Rebuildable storage", bytes: model.snapshot.artifactBytes,
+                      subtitle: "\(model.snapshot.artifacts.count) folders across \(Set(model.snapshot.artifacts.map(\.projectPath)).count) projects",
+                      fraction: Double(model.snapshot.artifactBytes) / Double(max(1, model.volume?.usedBytes ?? model.snapshot.artifactBytes)))
+            ModelMessages()
+            HStack {
+                TextField("Filter by project or path", text: $search).textFieldStyle(.roundedBorder)
+                Picker("Tool", selection: $family) {
+                    Text("All tools").tag("All tools")
+                    ForEach(Array(Set(model.snapshot.artifacts.map { $0.kind.family })).sorted(), id: \.self) { Text($0).tag($0) }
+                }.frame(width: 180)
+                Button("Check Visible") { model.select(visible) }
+            }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    ForEach(groups, id: \.name) { group in
+                        VStack(spacing: 0) {
+                            HStack {
+                                Button {
+                                    let ids = Set(group.artifacts.map(\.id))
+                                    if ids.isSubset(of: model.selectedArtifactIDs) { model.selectedArtifactIDs.subtract(ids) }
+                                    else { model.selectedArtifactIDs.formUnion(ids) }
+                                } label: {
+                                    Image(systemName: Set(group.artifacts.map(\.id)).isSubset(of: model.selectedArtifactIDs) ? "checkmark.square.fill" : "square")
+                                }.buttonStyle(.plain).foregroundStyle(DiskSiftTheme.node).accessibilityLabel("Check group \(group.name)")
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(groupByProject ? URL(fileURLWithPath: group.name).lastPathComponent : group.name).font(.headline)
+                                    if groupByProject { Text(group.name.abbreviatingHome).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+                                }
+                                Spacer()
+                                Text(ByteText.string(group.bytes)).font(.title3.weight(.semibold)).monospacedDigit()
+                            }.padding(16).background(DiskSiftTheme.node.opacity(0.05))
+                            ForEach(group.artifacts) { artifact in
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ArtifactRow(artifact: artifact, selectable: true)
+                                    Text(artifact.kind.consequence).font(.caption).foregroundStyle(.secondary).padding(.leading, 56).padding(.bottom, 12)
+                                }.padding(.horizontal, 16)
+                            }
+                        }.background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator.opacity(0.4), lineWidth: 0.5))
+                    }
+                    if visible.isEmpty { ContentUnavailableView("No matching build folders", systemImage: "shippingbox") }
+                }
+            }
+        }.padding(28)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack(spacing: 14) {
+                Image(systemName: "shippingbox.fill").font(.title2).foregroundStyle(DiskSiftTheme.node)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(model.selectedArtifacts.count) checked · \(ByteText.string(model.selectedBytes))").font(.callout.weight(.semibold)).monospacedDigit()
+                    Text("Stop running builds and dev servers before cleanup.").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Clear") { model.deselectAll() }.disabled(model.selectedArtifactIDs.isEmpty)
+                Button("Delete Build Output…") { pending = model.selectedArtifacts; confirmsReclaim = true }
+                    .buttonStyle(.borderedProminent).tint(DiskSiftTheme.node)
+                    .disabled(model.selectedArtifactIDs.isEmpty || model.isBusy)
+            }.padding(.horizontal, 28).padding(.vertical, 18).background(.bar).overlay(alignment: .top) { Divider() }
         }
         .navigationTitle("Cleanup")
-        .confirmationDialog(
-            "Delete \(model.selectedArtifactIDs.count) selected folder\(model.selectedArtifactIDs.count == 1 ? "" : "s")?",
-            isPresented: $confirmsReclaim,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Permanently", role: .destructive) {
-                Task { await model.reclaimSelected() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "\(ByteText.compact(model.selectedBytes)) selected. Deletion skips Trash and cannot be undone."
-            )
-        }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Cleanup")
-                        .font(.system(size: 27, weight: .bold, design: .rounded))
-                }
-                Spacer()
-            }
-
-            HStack {
-                Picker("Type", selection: $filter) {
-                    ForEach(ArtifactFilter.allCases) { item in
-                        Text(item.title).tag(item)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 180, alignment: .leading)
-
-                Spacer()
-
-                Picker("Sort", selection: $sort) {
-                    ForEach(ArtifactSort.allCases) { item in
-                        Text(item.title).tag(item)
-                    }
-                }
-                .frame(width: 140)
-
-                Button(model.selectedArtifactIDs.isEmpty ? "Select Visible" : "Clear Selection") {
-                    if model.selectedArtifactIDs.isEmpty {
-                        model.select(visibleArtifacts)
-                    } else {
-                        model.deselectAll()
-                    }
-                }
-            }
-        }
-        .padding(32)
-        .padding(.bottom, 4)
-    }
-
-    private var artifactList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(visibleArtifacts.enumerated()), id: \.element.id) { index, artifact in
-                    ArtifactRow(artifact: artifact, selectable: true)
-                        .padding(.horizontal, 32)
-                        .background(
-                            model.selectedArtifactIDs.contains(artifact.id)
-                                ? DiskSiftTheme.color(for: artifact.kind).opacity(0.06)
-                                : .clear
-                        )
-                        .onTapGesture {
-                            model.toggleSelection(artifact)
+        .sheet(isPresented: $confirmsReclaim) {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Delete build output?").font(.title2.weight(.semibold))
+                Text("\(pending.count) folders · \(ByteText.string(pending.reduce(0) { $0 + $1.allocatedBytes }))").font(.title3)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(pending) { artifact in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(artifact.path.abbreviatingHome).font(.callout.weight(.medium))
+                                Text(artifact.kind.consequence).font(.caption).foregroundStyle(.secondary)
+                            }
                         }
-                    if index < visibleArtifacts.count - 1 {
-                        Divider()
-                            .padding(.leading, 92)
                     }
+                }.frame(maxHeight: 240)
+                Text("Deletion skips Trash and cannot be undone.").font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { confirmsReclaim = false }.keyboardShortcut(.cancelAction)
+                    Button("Delete Permanently", role: .destructive) {
+                        let reviewed = pending
+                        confirmsReclaim = false
+                        Task { await model.reclaimReviewed(reviewed) }
+                    }.buttonStyle(.borderedProminent).tint(DiskSiftTheme.rust).disabled(model.isBusy)
                 }
-            }
+            }.padding(24).frame(width: 560)
+                .onAppear { model.isReviewingDeletion = true }
+                .onDisappear { model.isReviewingDeletion = false }
         }
-    }
-
-    private var selectionBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 14) {
-                Image("ReclaimIcon")
-                    .resizable()
-                    .renderingMode(.template)
-                    .scaledToFit()
-                    .foregroundStyle(model.selectedArtifactIDs.isEmpty ? .secondary : DiskSiftTheme.rust)
-                    .frame(width: 25, height: 25)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(selectionTitle)
-                        .font(.callout.weight(.semibold))
-                    Text("Deletion skips Trash.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Delete Permanently") {
-                    confirmsReclaim = true
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(DiskSiftTheme.rust)
-                .disabled(
-                    model.selectedArtifactIDs.isEmpty
-                        || model.isScanning || !model.reclaimingArtifactIDs.isEmpty
-                )
-                .keyboardShortcut(.delete, modifiers: [.command])
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
-            .background(.bar)
-        }
-    }
-
-    private var selectionTitle: String {
-        guard !model.selectedArtifactIDs.isEmpty else { return "No folders selected" }
-        return "\(model.selectedArtifactIDs.count) selected · \(ByteText.compact(model.selectedBytes))"
     }
 }

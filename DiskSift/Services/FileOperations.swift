@@ -31,6 +31,7 @@ struct TrashSnapshot: Sendable {
     var unavailableRoots: [String] = []
     var errorsSkipped = 0
     var measuredAt: Date = .distantPast
+    var hasEstimate: Bool { measuredAt != .distantPast && (!items.isEmpty || (unavailableRoots.isEmpty && errorsSkipped == 0)) }
     var bytes: Int64 { items.reduce(0) { $0 + $1.allocatedBytes } }
 }
 
@@ -79,12 +80,14 @@ struct FileOperations: Sendable {
                             let stamp = try FileStamp.capture(child)
                             let values = try child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .contentModificationDateKey, .fileAllocatedSizeKey])
                             let directory = values.isDirectory == true && values.isSymbolicLink != true
-                            let bytes = directory ? try ArtifactScanner.measureDirectory(child).bytes : Int64(values.fileAllocatedSize ?? 0)
+                            let bytes = values.isSymbolicLink == true ? 0 : (directory ? try ArtifactScanner.measureDirectory(child).bytes : Int64(values.fileAllocatedSize ?? 0))
                             guard try FileStamp.capture(child) == stamp else { throw CocoaError(.fileReadUnknown) }
                             snapshot.items.append(ContentItem(path: child.standardizedFileURL.path, kind: ContentKind.classify(child, isDirectory: directory), allocatedBytes: bytes, modifiedAt: values.contentModificationDate, isPackage: directory, stamp: stamp))
                         } catch { snapshot.errorsSkipped += 1 }
                     }
-                } catch { snapshot.unavailableRoots.append(root.path) }
+                } catch {
+                    if (error as? CocoaError)?.code != .fileReadNoSuchFile { snapshot.unavailableRoots.append(root.path) }
+                }
             }
             snapshot.items.sort { $0.allocatedBytes > $1.allocatedBytes }
             snapshot.measuredAt = Date()

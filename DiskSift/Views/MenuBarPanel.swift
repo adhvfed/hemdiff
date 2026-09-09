@@ -4,118 +4,36 @@ import SwiftUI
 struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var model: AppModel
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("DiskSift")
-                            .font(.headline)
-                        Text(statusText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Image("MenuBarIcon")
-                        .resizable()
-                        .renderingMode(.template)
-                        .scaledToFit()
-                        .foregroundStyle(DiskSiftTheme.node)
-                        .frame(width: 25, height: 25)
-                }
-
-                if let volume = model.volume {
-                    VStack(alignment: .leading, spacing: 9) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text("\(Int((volume.usedFraction * 100).rounded()))% used")
-                                .font(.title2.weight(.bold))
-                                .monospacedDigit()
-                            Spacer()
-                            Text("\(ByteText.compact(volume.availableBytes)) free")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        StorageRail(
-                            volume: volume,
-                            rustBytes: model.snapshot.bytes(for: .rustTarget),
-                            nodeBytes: model.snapshot.bytes(for: .nodeModules)
-                                + model.snapshot.bytes(for: .nextBuild),
-                            appleBytes: developerArtifactBytes
-                        )
-                        .frame(height: 14)
-                    }
-                }
-
-                HStack {
-                    ArtifactIcon(kind: .rustTarget, size: 20)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Rust target")
-                            .font(.caption)
-                        Text(ByteText.compact(model.snapshot.bytes(for: .rustTarget)))
-                            .font(.callout.weight(.semibold))
-                            .monospacedDigit()
-                    }
-                    Spacer()
-                    ArtifactIcon(kind: .nodeModules, size: 20)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Node")
-                            .font(.caption)
-                        Text(ByteText.compact(
-                            model.snapshot.bytes(for: .nodeModules)
-                                + model.snapshot.bytes(for: .nextBuild)
-                        ))
-                            .font(.callout.weight(.semibold))
-                            .monospacedDigit()
-                    }
-                }
-
-                HStack {
-                    ArtifactIcon(kind: .xcodeDerivedData, size: 20)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Xcode / SwiftPM")
-                            .font(.caption)
-                        Text(ByteText.compact(developerArtifactBytes))
-                            .font(.callout.weight(.semibold))
-                            .monospacedDigit()
-                    }
-                }
-            }
-            .padding(18)
-
-            Divider()
-
+        VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Button("Open DiskSift") {
-                    openWindow(id: "main")
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-                .keyboardShortcut(.defaultAction)
-
+                Text("DiskSift").font(.headline)
                 Spacer()
-
-                Button(model.isScanning ? "Cancel" : "Scan Now") {
-                    model.isScanning ? model.cancelScan() : model.startScan()
+                if model.isBusy { ProgressView().controlSize(.small) }
+            }
+            if let volume = model.volume {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(ByteText.compact(volume.availableBytes)).font(.system(size: 32, weight: .semibold, design: .rounded)).monospacedDigit()
+                    Text("available · \(Int((volume.usedFraction * 100).rounded()))% used").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .padding(14)
-            .background(.bar)
-        }
-        .frame(width: 330)
+            Divider()
+            metric("Build output", bytes: model.snapshot.artifactBytes, icon: "shippingbox", color: DiskSiftTheme.node)
+            metric("Trash estimate", bytes: model.trashSnapshot.bytes, icon: "trash", color: DiskSiftTheme.rust, available: model.trashSnapshot.hasEstimate)
+            if !model.trashSnapshot.unavailableRoots.isEmpty { Text("Trash access is restricted").font(.caption).foregroundStyle(.orange) }
+            Divider()
+            HStack {
+                Button("Open DiskSift") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }.keyboardShortcut(.defaultAction)
+                Spacer()
+                Button(model.isScanning ? "Cancel" : "Scan") { model.isScanning ? model.cancelScan() : model.startScan() }.disabled(model.isBusy && !model.isScanning)
+            }
+        }.padding(20).frame(width: 330)
     }
-
-    private var statusText: String {
-        if model.isScanning, let progress = model.scanProgress {
-            return progress.summary
-        }
-        guard model.snapshot.finishedAt != .distantPast else {
-            return "Not scanned yet"
-        }
-        return "Updated \(model.snapshot.finishedAt.formatted(.relative(presentation: .named)))"
-    }
-
-    private var developerArtifactBytes: Int64 {
-        model.snapshot.bytes(for: .xcodeDerivedData)
-            + model.snapshot.bytes(for: .swiftBuild)
+    private func metric(_ name: String, bytes: Int64, icon: String, color: Color, available: Bool = true) -> some View {
+        HStack {
+            Label(name, systemImage: icon).foregroundStyle(color)
+            Spacer()
+            Text(available ? ByteText.compact(bytes) : "—").fontWeight(.semibold).monospacedDigit()
+        }.font(.callout)
     }
 }

@@ -2,8 +2,8 @@
 
 DiskSift is a native macOS disk monitor focused on low-overhead visibility and
 safe cleanup of regenerable developer storage: Rust `target`, JavaScript
-`node_modules`, Next.js `.next`, SwiftPM `.build`, and Xcode `DerivedData`
-folders. `~/Projects` is scanned directly by default so the inventory does not
+`node_modules`, Next.js `.next`, Turbo, Terraform/OpenTofu providers, Python
+tool caches, Maven/Gradle, SwiftPM `.build`, and Xcode `DerivedData` folders. `~/Projects` is scanned directly by default so the inventory does not
 depend on Spotlight indexing being current.
 
 Git discovery follows registered worktrees from repositories found in the index
@@ -23,10 +23,40 @@ images, documents, archives, disk images and installers, virtual machines, AI
 models, databases and datasets, code, applications, and other files. Add folders
 such as Downloads or Movies in **Scan Locations** to include them.
 
-Category totals include all measured items. Browse the largest 100 per type,
-filter by name or path, sort by size, name, or modification date, and use **Show
-in Finder** to move or remove personal files. App bundles, photo libraries, and
-VM packages appear as single items. Build folders remain in **Cleanup**.
+Select several categories, filter by name or path, and sort by size, name,
+modification date, or location. The complete file index is paged in groups of
+250; checked files stay checked across categories and pages. Use arrow keys to
+navigate, Space to check, and Command-Y to preview. App bundles, photo libraries,
+and VM packages appear as single items. Logs have their own category.
+
+**Move to Trash** shows the exact checked list for confirmation. Files are
+revalidated before moving, and a failed move never falls back to permanent
+deletion. **Trash** measures accessible items and shows the estimated recovery
+from emptying it. Delete checked items or empty the reviewed contents after a
+separate permanent-deletion confirmation. New arrivals are left alone. macOS may
+require Full Disk Access to read Trash; inaccessible contents are reported.
+
+**Cleanup** groups rebuildable output by project or tool. These folders are
+permanently deleted after confirmation. Stop builds and development servers first.
+Rules require the exact default output path plus real, non-symlink marker files:
+
+| Output | Required project marker |
+| --- | --- |
+| `target` (Rust) | `Cargo.toml` |
+| `node_modules`, `.next` | `package.json` |
+| `.turbo/cache` | `turbo.json` or `turbo.jsonc` |
+| `.terraform/providers` | `.terraform.lock.hcl` plus a `.tf` or `.tofu` file |
+| `.pytest_cache` | `pyproject.toml`, `pytest.ini`, or `setup.cfg` |
+| `.ruff_cache` | `pyproject.toml`, `ruff.toml`, or `.ruff.toml` |
+| `.mypy_cache` | `pyproject.toml`, `mypy.ini`, `.mypy.ini`, or `setup.cfg` |
+| `target` (Maven) | `pom.xml` |
+| `build` (Gradle) | `build.gradle` or `build.gradle.kts` |
+| `.build` | `Package.swift` |
+| Xcode DerivedData child | Known user DerivedData container |
+
+Terraform state, backend metadata, and lockfiles are preserved. Custom output
+paths and generic folders named `cache` or `dist` are not automatically offered.
+These are practical project conventions, not a guarantee about custom user data.
 
 ## Build
 

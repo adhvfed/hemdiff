@@ -109,7 +109,7 @@ struct ArtifactRow: View {
                 }
             }
             .buttonStyle(.borderless)
-            .disabled(model.isScanning || !model.reclaimingArtifactIDs.isEmpty)
+            .disabled(model.isBusy)
             .help("Permanently delete this folder")
             .accessibilityLabel("Delete \(artifact.kind.title) for \(artifact.projectName)")
         }

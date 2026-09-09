@@ -4,218 +4,127 @@ struct OverviewView: View {
     @EnvironmentObject private var model: AppModel
     let openReclaim: () -> Void
     let openFiles: () -> Void
+    let openTrash: () -> Void
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                pageHeader
-
-                if let error = model.errorMessage {
-                    StatusMessage(text: error, systemImage: "exclamationmark.triangle.fill", tint: .orange)
-                }
-
-                if let notice = model.noticeMessage {
-                    StatusMessage(text: notice, systemImage: "checkmark.circle.fill", tint: DiskSiftTheme.node)
-                }
-
-                if let volume = model.volume {
-                    capacitySection(volume)
-                } else {
-                    Panel {
-                        ProgressView("Reading disk capacity…")
-                            .frame(maxWidth: .infinity, minHeight: 140)
-                    }
-                }
-
-                Button(action: openFiles) {
-                    HStack {
-                        Label("Files", systemImage: "doc.on.doc")
-                        Spacer()
-                        Text("\(ByteText.string(model.snapshot.content.allocatedBytes)) in scan locations")
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right")
-                    }
-                    .font(.callout)
-                    .padding(16)
-                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-
-                artifactSection
-                locationSection
-            }
-            .padding(32)
-            .frame(maxWidth: 980, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
-        .navigationTitle("Storage")
-    }
-
-    private var pageHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Storage")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-            }
-            Spacer()
-            if model.isSnapshotStale, model.snapshot.finishedAt != .distantPast {
-                Label("Scan needed", systemImage: "clock.badge.exclamationmark")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.orange)
-            }
-        }
-    }
-
-    private func capacitySection(_ volume: VolumeSnapshot) -> some View {
-        Panel {
             VStack(alignment: .leading, spacing: 24) {
-                HStack(alignment: .top, spacing: 28) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("\(Int((volume.usedFraction * 100).rounded()))%")
-                            .font(.system(size: 58, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                        Text("used on \(volume.name)")
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.secondary)
+                HStack {
+                    Text("Storage").font(.system(size: 30, weight: .bold, design: .rounded)).tracking(-0.6)
+                    Spacer()
+                    if model.isSnapshotStale, model.snapshot.finishedAt != .distantPast {
+                        Label("Scan needed", systemImage: "clock").font(.caption).foregroundStyle(.orange)
                     }
-                    .frame(width: 168, alignment: .leading)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(ByteText.string(volume.usedBytes))
-                                .font(.title3.weight(.semibold))
-                                .monospacedDigit()
-                            Text("of \(ByteText.string(volume.totalBytes))")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("\(ByteText.string(volume.availableBytes)) free")
-                                .font(.callout.weight(.medium))
-                                .monospacedDigit()
-                        }
-
-                        StorageRail(
-                            volume: volume,
-                            rustBytes: model.snapshot.bytes(for: .rustTarget),
-                            nodeBytes: model.snapshot.bytes(for: .nodeModules)
-                                + model.snapshot.bytes(for: .nextBuild),
-                            appleBytes: developerArtifactBytes
-                        )
-
-                        StorageLegend(snapshot: model.snapshot, volume: volume)
-                    }
-                    .padding(.top, 7)
                 }
-
+                ModelMessages()
+                if let volume = model.volume {
+                    HStack(spacing: 30) {
+                        StorageOrbit(volume: volume, buildBytes: model.snapshot.artifactBytes, trashBytes: model.trashSnapshot.bytes)
+                            .frame(width: 180, height: 180)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Available now").font(.callout.weight(.medium)).foregroundStyle(.secondary)
+                            Text(ByteText.compact(volume.availableBytes))
+                                .font(.system(size: 48, weight: .semibold, design: .rounded)).tracking(-1.8).monospacedDigit()
+                            Text("\(ByteText.compact(volume.usedBytes)) used of \(ByteText.compact(volume.totalBytes))")
+                                .font(.callout).foregroundStyle(.secondary)
+                            Label(volume.name, systemImage: "internaldrive").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(28).frame(maxWidth: .infinity, alignment: .leading)
+                    .background {
+                        RoundedRectangle(cornerRadius: 20).fill(.background.secondary)
+                        RoundedRectangle(cornerRadius: 20).fill(LinearGradient(colors: [DiskSiftTheme.node.opacity(0.13), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        RoundedRectangle(cornerRadius: 20).strokeBorder(.separator.opacity(0.4), lineWidth: 0.5)
+                    }
+                }
                 if let progress = model.scanProgress {
-                    Divider()
-                    ScanProgressStrip(progress: progress)
+                    HStack(spacing: 12) {
+                        ProgressView().controlSize(.small)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(progress.summary).font(.callout.weight(.medium))
+                            Text(progress.currentPath.abbreviatingHome).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        }
+                        Spacer()
+                        Text(ByteText.string(progress.bytesMeasured)).font(.callout).monospacedDigit()
+                    }
+                }
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Reclaim space").font(.title3.weight(.semibold))
+                    recoveryRow("Build output", subtitle: "\(model.snapshot.artifacts.count) rebuildable folders", bytes: model.snapshot.artifactBytes,
+                                icon: "shippingbox.fill", color: DiskSiftTheme.node, action: openReclaim)
+                    recoveryRow("Trash", subtitle: model.trashSnapshot.unavailableRoots.isEmpty ? "Estimated recovery after emptying" : "Access needed for a complete estimate",
+                                bytes: model.trashSnapshot.bytes, icon: "trash.fill", color: DiskSiftTheme.rust, available: model.trashSnapshot.hasEstimate, action: openTrash)
+                }
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("Files by type").font(.title3.weight(.semibold))
+                        Spacer()
+                        Button("Review Files", action: openFiles)
+                    }
+                    if model.snapshot.content.summaries.isEmpty {
+                        Text("Add folders in Scan Locations to classify their files.").font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        VStack(spacing: 14) {
+                            ForEach(model.snapshot.content.summaries.prefix(6)) { summary in
+                                Button(action: openFiles) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: summary.kind.icon).foregroundStyle(summary.kind.color).frame(width: 24)
+                                        Text(summary.kind.title).font(.callout.weight(.medium)).frame(width: 150, alignment: .leading)
+                                        GeometryReader { proxy in
+                                            Capsule().fill(summary.kind.color.opacity(0.08))
+                                            Capsule().fill(summary.kind.color.gradient).frame(width: max(3, proxy.size.width * Double(summary.allocatedBytes) / Double(max(1, model.snapshot.content.allocatedBytes))))
+                                        }.frame(height: 6)
+                                        Text(ByteText.compact(summary.allocatedBytes)).font(.callout.weight(.medium)).monospacedDigit().frame(width: 90, alignment: .trailing)
+                                    }.contentShape(Rectangle())
+                                }.buttonStyle(.plain)
+                            }
+                        }.padding(20).background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+                    }
                 }
             }
-        }
+            .padding(28).frame(maxWidth: 1100).frame(maxWidth: .infinity)
+        }.navigationTitle("Storage")
     }
 
-    private var artifactSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Build files & dependencies")
-                        .font(.title3.weight(.semibold))
-                    Text("\(model.snapshot.artifacts.count) folders · \(ByteText.compact(model.snapshot.artifactBytes)) total")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+    private func recoveryRow(_ title: String, subtitle: String, bytes: Int64, icon: String, color: Color, available: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Image(systemName: icon).font(.title2).foregroundStyle(color).frame(width: 48, height: 48)
+                    .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.headline)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                if !model.snapshot.artifacts.isEmpty {
-                    Button("View All", action: openReclaim)
-                }
-            }
-
-            Panel {
-                if model.snapshot.artifacts.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: model.isScanning ? "magnifyingglass" : "checkmark.seal")
-                            .font(.system(size: 28))
-                            .foregroundStyle(model.isScanning ? DiskSiftTheme.node : .secondary)
-                        Text(model.isScanning ? "Scanning…" : "No build files found")
-                            .font(.headline)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 120)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(Array(model.snapshot.artifacts.prefix(5).enumerated()), id: \.element.id) { index, artifact in
-                            ArtifactRow(artifact: artifact)
-                            if index < min(4, model.snapshot.artifacts.count - 1) {
-                                Divider()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var locationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Build files by location")
-                    .font(.title3.weight(.semibold))
-            }
-
-            Panel {
-                if model.snapshot.categories.isEmpty {
-                    Text("No results yet")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                } else {
-                    VStack(spacing: 12) {
-                        ForEach(model.snapshot.categories.prefix(8)) { category in
-                            HStack {
-                                Image(systemName: "folder")
-                                    .foregroundStyle(.secondary)
-                                Text(category.name)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(ByteText.compact(category.allocatedBytes))
-                                    .font(.callout.weight(.semibold))
-                                    .monospacedDigit()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var developerArtifactBytes: Int64 {
-        model.snapshot.bytes(for: .xcodeDerivedData)
-            + model.snapshot.bytes(for: .swiftBuild)
+                Text(available ? ByteText.compact(bytes) : "—").font(.system(size: 25, weight: .semibold, design: .rounded)).monospacedDigit()
+                Image(systemName: "arrow.up.right").foregroundStyle(color)
+            }.padding(18).background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(color.opacity(0.15), lineWidth: 0.75))
+        }.buttonStyle(.plain)
     }
 }
 
-private struct ScanProgressStrip: View {
-    let progress: ScanProgress
-
+private struct StorageOrbit: View {
+    let volume: VolumeSnapshot
+    let buildBytes: Int64
+    let trashBytes: Int64
+    private var build: Double { min(volume.usedFraction, Double(buildBytes) / Double(max(1, volume.totalBytes))) }
+    private var trash: Double { min(max(0, volume.usedFraction - build), Double(trashBytes) / Double(max(1, volume.totalBytes))) }
     var body: some View {
-        HStack(spacing: 12) {
-            ProgressView()
-                .controlSize(.small)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(progress.summary)
-                    .font(.caption.weight(.medium))
-                    .monospacedDigit()
-                Text(progress.currentPath)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        ZStack {
+            Circle().stroke(.primary.opacity(0.06), lineWidth: 20)
+            Circle().trim(from: 0, to: volume.usedFraction).stroke(.primary.opacity(0.23), style: StrokeStyle(lineWidth: 20, lineCap: .butt)).rotationEffect(.degrees(-90))
+            Circle().trim(from: 0, to: build).stroke(DiskSiftTheme.node.gradient, style: StrokeStyle(lineWidth: 20, lineCap: .butt)).rotationEffect(.degrees(-90))
+            Circle().trim(from: build, to: build + trash).stroke(DiskSiftTheme.rust.gradient, style: StrokeStyle(lineWidth: 20, lineCap: .butt)).rotationEffect(.degrees(-90))
+            Circle().stroke(.separator.opacity(0.25), lineWidth: 1).padding(20)
+            VStack(spacing: 3) {
+                Text("\(Int((volume.usedFraction * 100).rounded()))%")
+                    .font(.system(size: 32, weight: .semibold, design: .rounded)).monospacedDigit()
+                Text("used").font(.caption).foregroundStyle(.secondary)
             }
-            Spacer()
-            Text(ByteText.compact(progress.bytesMeasured))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-        }
+        }.padding(12)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(Int((volume.usedFraction * 100).rounded())) percent used. Teal is build output; orange is Trash.")
     }
 }

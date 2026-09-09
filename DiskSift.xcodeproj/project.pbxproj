@@ -18,6 +18,7 @@
 		3A0727528605917EA3BDF2E8 /* ArtifactScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA9152DC80AD2CDC659899AF /* ArtifactScanner.swift */; };
 		3B27C0524EA6046B5B984666 /* ContentIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C8AC13B034FC5393560317B /* ContentIndex.swift */; };
 		3C0F8A1903170651DD42866F /* ArtifactRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83EDB636BCCE41FD5A08700A /* ArtifactRules.swift */; };
+		3CE8187B772E49711C708B48 /* ManagementComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDABE96C32373F37155A8830 /* ManagementComponents.swift */; };
 		403BCBA655C9C7E6A7334B10 /* GitRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FF593F67F3568BA342CEE2 /* GitRepository.swift */; };
 		45FFDDDC3FDED9BA47D29543 /* ArtifactReclaimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FAFC764E3579091DF392E1E /* ArtifactReclaimer.swift */; };
 		4A8E78D564DA9C4F3F710635 /* LocationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDDB16EE8491BB76E6C0E06B /* LocationsView.swift */; };
@@ -43,6 +44,7 @@
 		E3FDDFB2D693173339D1BFDD /* ScanProcessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA0E4A675AD75787A15990B /* ScanProcessTests.swift */; };
 		E4B9DF65B96B8E30EA59A722 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82D526CEFBDC03180C22C7B0 /* Theme.swift */; };
 		E5D7F259C3D92AA591B70219 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4518745E021F3CA2E3DD90 /* AppModel.swift */; };
+		EA9F20CE84ED7078E423F684 /* TrashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F06B15F2A3519855E64F3C90 /* TrashView.swift */; };
 		F94765B0F9F3DFEEE62BE2A4 /* ContentClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 901A9E8FAE8C5F22BFAC5226 /* ContentClassificationTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -96,6 +98,8 @@
 		E8BFF2AA42CF3BD51D0BAD36 /* SnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStoreTests.swift; sourceTree = "<group>"; };
 		EA0284845B1AECA635DAB190 /* ArtifactRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactRow.swift; sourceTree = "<group>"; };
 		EA9152DC80AD2CDC659899AF /* ArtifactScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactScanner.swift; sourceTree = "<group>"; };
+		F06B15F2A3519855E64F3C90 /* TrashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashView.swift; sourceTree = "<group>"; };
+		FDABE96C32373F37155A8830 /* ManagementComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementComponents.swift; sourceTree = "<group>"; };
 		FDDB16EE8491BB76E6C0E06B /* LocationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -106,12 +110,14 @@
 				EA0284845B1AECA635DAB190 /* ArtifactRow.swift */,
 				CC57B041B831E786C853C5E9 /* FilesView.swift */,
 				FDDB16EE8491BB76E6C0E06B /* LocationsView.swift */,
+				FDABE96C32373F37155A8830 /* ManagementComponents.swift */,
 				0780BAE8B2390AC585A87294 /* MenuBarPanel.swift */,
 				C7B61F281ECB92DDEA0CC136 /* OverviewView.swift */,
 				7CC81E815A7FA4828441B1F6 /* ReclaimView.swift */,
 				171B9B50BC00FDF7B26B4437 /* RootView.swift */,
 				AEC2F631D232BC1E58EBBC7F /* StorageRail.swift */,
 				82D526CEFBDC03180C22C7B0 /* Theme.swift */,
+				F06B15F2A3519855E64F3C90 /* TrashView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -334,6 +340,7 @@
 				DF368F90E04C57D2AA7BD6E4 /* FilesView.swift in Sources */,
 				403BCBA655C9C7E6A7334B10 /* GitRepository.swift in Sources */,
 				4A8E78D564DA9C4F3F710635 /* LocationsView.swift in Sources */,
+				3CE8187B772E49711C708B48 /* ManagementComponents.swift in Sources */,
 				2AF68A0B38E4A326ED5B38AA /* MenuBarPanel.swift in Sources */,
 				5CED118A6B5316E4FFDF5543 /* OverviewView.swift in Sources */,
 				D50D2055714E75EF47B0B9AC /* PathSafety.swift in Sources */,
@@ -344,6 +351,7 @@
 				4C61E46532B3D8B02422851D /* SnapshotStore.swift in Sources */,
 				A4C854FEE3571AE28E2C7D1B /* StorageRail.swift in Sources */,
 				E4B9DF65B96B8E30EA59A722 /* Theme.swift in Sources */,
+				EA9F20CE84ED7078E423F684 /* TrashView.swift in Sources */,
 				6F032AF58469A3C52785A857 /* VolumeMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -134,6 +134,7 @@ struct ProjectLocator: Sendable {
             // Explicit roots inside build output must not count those bytes again as personal files.
             let buildComponents: Set<String> = ["target", "node_modules", ".next", ".build", "DerivedData", ".git"]
             let classifiesContent = !root.standardizedFileURL.pathComponents.contains { buildComponents.contains($0) }
+                && !ArtifactRules.containsArtifact(root)
             let fallback = try walkMarkers(
                 in: root, content: &content, classifiesContent: classifiesContent, progress: progress
             )

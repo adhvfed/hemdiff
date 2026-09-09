@@ -17,6 +17,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isLoadingTrash = false
     @Published private(set) var isManagingFiles = false
     @Published private(set) var contentRevision = 0
+    var isReviewingDeletion = false
     private let fileOperations: FileOperations
     var isBusy: Bool { isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
 
@@ -116,7 +117,7 @@ final class AppModel: ObservableObject {
     }
 
     func startScan() {
-        guard !isBusy else { return }
+        guard !isBusy, !isReviewingDeletion else { return }
         scanGeneration = UUID()
         isScanning = true
         scanProgress = ScanProgress(
@@ -188,13 +189,20 @@ final class AppModel: ObservableObject {
         selectedArtifactIDs.removeAll()
     }
 
+    func reclaimReviewed(_ artifacts: [Artifact]) async {
+        // Keep the confirmation's selection fixed even if the visible filter changes.
+        let current = Dictionary(uniqueKeysWithValues: snapshot.artifacts.map { ($0.id, $0) })
+        await reclaim(artifacts.filter { current[$0.id]?.fileIdentity == $0.fileIdentity })
+    }
+
     func reclaimSelected() async {
         let artifacts = selectedArtifacts
         await reclaim(artifacts)
     }
 
     func reclaim(_ artifact: Artifact) async {
-        guard let currentArtifact = snapshot.artifacts.first(where: { $0.id == artifact.id }) else {
+        guard let currentArtifact = snapshot.artifacts.first(where: { $0.id == artifact.id }),
+              currentArtifact.fileIdentity == artifact.fileIdentity else {
             errorMessage = "Folder missing from scan results. Scan again."
             return
         }

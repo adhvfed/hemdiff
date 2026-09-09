@@ -12,6 +12,20 @@ enum ArtifactRules {
         return true
     }
 
+    static func containsArtifact(_ url: URL) -> Bool {
+        var candidate = url.standardizedFileURL
+        while candidate.path != "/" {
+            for kind in ArtifactKind.allCases where !kind.isKnownContainerArtifact {
+                if candidate.path.hasSuffix("/" + kind.folderName) {
+                    let project = kind.folderName.split(separator: "/").reduce(candidate) { root, _ in root.deletingLastPathComponent() }
+                    if matches(kind, project: project) { return true }
+                }
+            }
+            candidate = candidate.deletingLastPathComponent()
+        }
+        return false
+    }
+
     private static func regularFile(_ url: URL) -> Bool {
         guard !PathSafety.hasSymbolicLink(in: url),
               let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]) else { return false }

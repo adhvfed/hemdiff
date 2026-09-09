@@ -4,6 +4,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
     case overview
     case reclaim
     case files
+    case trash
     case locations
 
     var id: String { rawValue }
@@ -13,6 +14,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
         case .overview: "Storage"
         case .reclaim: "Cleanup"
         case .files: "Files"
+        case .trash: "Trash"
         case .locations: "Scan Locations"
         }
     }
@@ -20,8 +22,9 @@ enum AppDestination: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .overview: "chart.bar.xaxis"
-        case .reclaim: "trash"
+        case .reclaim: "shippingbox"
         case .files: "doc.on.doc"
+        case .trash: "trash"
         case .locations: "folder.badge.gearshape"
         }
     }
@@ -47,11 +50,13 @@ struct RootView: View {
             Group {
                 switch destination ?? .overview {
                 case .overview:
-                    OverviewView(openReclaim: { destination = .reclaim }, openFiles: { destination = .files })
+                    OverviewView(openReclaim: { destination = .reclaim }, openFiles: { destination = .files }, openTrash: { destination = .trash })
                 case .reclaim:
                     ReclaimView()
                 case .files:
                     FilesView(openLocations: { destination = .locations })
+                case .trash:
+                    TrashView()
                 case .locations:
                     LocationsView()
                 }
@@ -62,6 +67,7 @@ struct RootView: View {
                     .ignoresSafeArea()
             }
         }
+        .tint(DiskSiftTheme.node)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -73,6 +79,7 @@ struct RootView: View {
                     )
                 }
                 .help(model.isScanning ? "Cancel the current scan" : "Scan configured locations")
+                .disabled(model.isBusy && !model.isScanning)
             }
         }
     }

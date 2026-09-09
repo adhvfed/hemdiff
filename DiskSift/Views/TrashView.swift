@@ -1,0 +1,89 @@
+import AppKit
+import SwiftUI
+
+struct TrashView: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var checked = Set<String>()
+    @State private var focused = Set<String>()
+    @State private var confirmation: FileConfirmation?
+    @State private var preview: ContentItem?
+    private var trash: TrashSnapshot { model.trashSnapshot }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Text("Trash").font(.system(size: 30, weight: .bold, design: .rounded)).tracking(-0.6)
+                Spacer()
+                Button { Task { await model.refreshTrash() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                    .disabled(model.isBusy)
+                Button("Open in Finder") { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")) }
+            }
+            SpaceHero(title: "Estimated space to recover", bytes: trash.bytes,
+                      subtitle: "\(trash.items.count.formatted()) items in Trash", color: DiskSiftTheme.rust,
+                      fraction: Double(trash.bytes) / Double(max(1, model.volume?.usedBytes ?? trash.bytes)),
+                      isAvailable: trash.hasEstimate)
+            ModelMessages()
+            if !trash.unavailableRoots.isEmpty {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "lock.shield").font(.title2).foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Trash access is restricted").font(.headline)
+                        Text("Allow DiskSift in System Settings → Privacy & Security → Full Disk Access, then reopen the app. The estimate includes only accessible items.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("System Settings") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app")) }
+                }.padding(18).background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+            }
+            if model.isLoadingTrash {
+                ProgressView("Measuring Trash…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if trash.items.isEmpty {
+                ContentUnavailableView(trash.unavailableRoots.isEmpty ? "Trash is empty" : "No accessible items", systemImage: "trash")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                FileItemTable(items: trash.items, focused: $focused, checked: checked, toggle: toggle, toggleFocused: {
+                    let items = trash.items.filter { focused.contains($0.path) }
+                    let remove = items.allSatisfy { checked.contains($0.path) }
+                    for item in items {
+                        if remove { checked.remove(item.path) } else { checked.insert(item.path) }
+                    }
+                }, preview: { preview = $0 })
+                Text("Shared blocks and open files can reduce the space recovered.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if trash.errorsSkipped > 0 { Text("\(trash.errorsSkipped) items couldn’t be measured.").font(.caption).foregroundStyle(.orange) }
+        }
+        .padding(28)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack(spacing: 14) {
+                Image(systemName: "trash").font(.title2).foregroundStyle(DiskSiftTheme.rust)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(checked.count) checked · \(ByteText.string(trash.items.filter { checked.contains($0.path) }.reduce(0) { $0 + $1.allocatedBytes }))")
+                        .font(.callout.weight(.semibold)).monospacedDigit()
+                    Text("Deletion from Trash is permanent.").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !checked.isEmpty {
+                    Button("Delete Checked…") { confirmation = FileConfirmation(items: trash.items.filter { checked.contains($0.path) }, permanent: true) }
+                        .disabled(model.isBusy)
+                }
+                Button("Empty Trash…") { confirmation = FileConfirmation(items: trash.items, permanent: true) }
+                    .buttonStyle(.borderedProminent).tint(DiskSiftTheme.rust)
+                    .disabled(trash.items.isEmpty || model.isBusy)
+            }.padding(.horizontal, 28).padding(.vertical, 18).background(.bar).overlay(alignment: .top) { Divider() }
+        }
+        .navigationTitle("Trash")
+        .task { await model.refreshTrash() }
+        .onChange(of: trash.items.map(\.path)) { _, paths in checked.formIntersection(Set(paths)) }
+        .sheet(item: $confirmation) { pending in
+            FileConfirmationSheet(confirmation: pending) {
+                Task { let removed = await model.deleteTrashItems(pending.items); checked.subtract(removed) }
+            }
+        }
+        .sheet(item: $preview) { FilePreview(item: $0) }
+    }
+
+    private func toggle(_ item: ContentItem) {
+        if checked.contains(item.path) { checked.remove(item.path) } else { checked.insert(item.path) }
+    }
+}
