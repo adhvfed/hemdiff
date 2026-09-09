@@ -9,90 +9,192 @@ struct ProjectSuggestion: Identifiable, Sendable {
 
 struct ProjectSuggestionResult: Sendable {
     let suggestions: [ProjectSuggestion]
-    let limited: Bool
     let indexUnavailable: Bool
+    let foldersUnavailable: Bool
+}
+
+private enum ProjectSearchEvent: Sendable {
+    case project(URL, worktree: Bool)
+    case refresh
+    case indexUnavailable
+    case foldersUnavailable
 }
 
 struct ProjectSuggestions: Sendable {
     var home = FileManager.default.homeDirectoryForCurrentUser
     var locator = ProjectLocator()
-    var entryLimit = 20_000
     static let commonNames = ["Projects", "Developer", "Development", "Code", "src", "Source", "Repos", "Repositories"]
     private static let pruned: Set<String> = [".git", "node_modules", "target", "build", "dist", ".next", ".build", ".turbo", ".terraform", ".venv", "venv", "vendor", ".cache", ".pytest_cache", ".ruff_cache", ".mypy_cache"]
     private static let manifests = Set(ArtifactKind.allCases.flatMap(\.markerNames) + ["go.mod", "requirements.txt", "Gemfile", "CMakeLists.txt", "composer.json"])
 
-    func find() async throws -> ProjectSuggestionResult {
-        let worker = Task.detached(priority: .utility) { try discover() }
-        let timeout = Task {
-            try await Task.sleep(for: .seconds(20))
-            worker.cancel()
+    /// Independent sources publish into one stream. Cancellation reaches both the
+    /// directory walk and mdfind; all results delivered before stopping are retained.
+    func find(onUpdate: @escaping @Sendable (ProjectSuggestionResult) async -> Void = { _ in }) async -> ProjectSuggestionResult {
+        let (stream, continuation) = AsyncStream<ProjectSearchEvent>.makeStream()
+        let worker = Task.detached(priority: .utility) {
+            let ticker = Task {
+                do {
+                    while !Task.isCancelled {
+                        try await Task.sleep(for: .milliseconds(100))
+                        continuation.yield(.refresh)
+                    }
+                } catch {}
+            }
+            defer { ticker.cancel() }
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { try? searchFolders { continuation.yield($0) } }
+                group.addTask { try? searchIndex { continuation.yield($0) } }
+            }
+            continuation.finish()
         }
-        defer { timeout.cancel() }
-        return try await withTaskCancellationHandler {
-            try await worker.value
+        return await withTaskCancellationHandler {
+            var collected = CollectedProjects(home: home)
+            var lastUpdate: ContinuousClock.Instant?
+            var dirty = false
+            for await event in stream {
+                collected.accept(event)
+                if case .refresh = event {} else { dirty = true }
+                if dirty && (lastUpdate == nil || lastUpdate!.duration(to: .now) >= .milliseconds(100)) {
+                    await onUpdate(collected.result)
+                    lastUpdate = .now
+                    dirty = false
+                }
+            }
+            worker.cancel()
+            await worker.value
+            await onUpdate(collected.result)
+            return collected.result
         } onCancel: { worker.cancel() }
     }
 
+    // Synchronous entry point for deterministic discovery tests.
     func discover() throws -> ProjectSuggestionResult {
-        let roots = Self.commonNames.map { home.appendingPathComponent($0).standardizedFileURL }.filter(PathSafety.isDirectory)
-        var projects = Set<URL>(), worktrees = Set<URL>()
-        var visited = 0, limited = false, depthLimited = false, indexUnavailable = false
-        func allowed(_ url: URL) -> Bool {
-            url.standardizedFileURL != home.standardizedFileURL &&
-            !ProjectLocator.isAutomaticallyExcluded(url, home: home) &&
-            !url.pathComponents.contains(where: Self.pruned.contains) && PathSafety.isDirectory(url)
+        var collected = CollectedProjects(home: home)
+        try searchFolders { collected.accept($0) }
+        try searchIndex { collected.accept($0) }
+        return collected.result
+    }
+
+    private func allowed(_ url: URL) -> Bool {
+        url.standardizedFileURL != home.standardizedFileURL &&
+        !ProjectLocator.isAutomaticallyExcluded(url, home: home) &&
+        !url.pathComponents.contains(where: Self.pruned.contains) &&
+        PathSafety.isDirectory(url) &&
+        (try? url.resourceValues(forKeys: [.isPackageKey]).isPackage) != true
+    }
+
+    private func reportProject(_ url: URL, report: (ProjectSearchEvent) -> Void) throws -> Bool {
+        guard allowed(url) else { return false }
+        let repository = GitRepository.at(url)
+        let hasMarker = repository != nil || Self.manifests.contains { name in
+            let marker = url.appendingPathComponent(name)
+            return !PathSafety.hasSymbolicLink(in: marker) &&
+                (try? marker.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
         }
-        func inspect(_ url: URL) {
-            guard allowed(url) else { return }
-            let hasMarker = Self.manifests.contains { name in
-                let marker = url.appendingPathComponent(name)
-                return !PathSafety.hasSymbolicLink(in: marker) && (try? marker.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
-            }
-            if hasMarker || GitRepository.at(url) != nil { projects.insert(url.standardizedFileURL) }
-        }
-        for root in roots {
-            try Task.checkCancellation()
-            inspect(root)
-            guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey], options: [.skipsPackageDescendants]) else { continue }
-            while let url = enumerator.nextObject() as? URL {
-                try Task.checkCancellation()
-                visited += 1
-                if visited > entryLimit { limited = true; break }
-                let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-                if enumerator.level > 5 { depthLimited = true }
-                if values?.isSymbolicLink == true || Self.pruned.contains(url.lastPathComponent) || enumerator.level > 5 {
-                    enumerator.skipDescendants(); continue
-                }
-                if values?.isDirectory == true { inspect(url) }
-            }
-            if limited { break }
-        }
-        if !limited { do {
-            for path in try locator.indexedPaths(home) {
-                try Task.checkCancellation()
-                visited += 1
-                if visited > entryLimit { limited = true; break }
-                inspect(URL(fileURLWithPath: path).deletingLastPathComponent())
-            }
-        } catch is CancellationError { throw CancellationError() }
-        catch { indexUnavailable = true }
-        }
-        var seenCommon = Set<String>()
-        for project in projects.sorted(by: { $0.path < $1.path }) {
-            try Task.checkCancellation()
-            guard let repository = GitRepository.at(project), seenCommon.insert(repository.commonDirectory.path).inserted else { continue }
+        guard hasMarker else { return false }
+        report(.project(url.standardizedFileURL, worktree: repository?.isLinkedWorktree == true))
+        if let repository {
             for checkout in (try? repository.registeredWorktrees()) ?? [] {
                 try Task.checkCancellation()
-                guard allowed(checkout), let linked = GitRepository.at(checkout), linked.commonDirectory.path == repository.commonDirectory.path else { continue }
-                projects.insert(checkout.standardizedFileURL)
-                if checkout.standardizedFileURL != repository.root.standardizedFileURL { worktrees.insert(checkout.standardizedFileURL) }
+                guard allowed(checkout), let linked = GitRepository.at(checkout),
+                      linked.commonDirectory.path == repository.commonDirectory.path else { continue }
+                report(.project(checkout.standardizedFileURL, worktree: linked.isLinkedWorktree))
             }
         }
-        // Only familiar project containers are grouped. Elsewhere suggest the exact project.
-        let grouped = Dictionary(grouping: projects) { project in roots.first { PathSafety.contains(project, in: $0) } ?? project }
+        return true
+    }
+
+    private func searchFolders(report: (ProjectSearchEvent) -> Void) throws {
+        let roots: [URL]
+        do {
+            roots = try FileManager.default.contentsOfDirectory(
+                at: home, includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ).filter { allowed($0) }.sorted {
+                let left = Self.commonNames.contains($0.lastPathComponent)
+                let right = Self.commonNames.contains($1.lastPathComponent)
+                return left != right ? left : $0.path < $1.path
+            }
+        } catch { report(.foldersUnavailable); return }
+
+        // Breadth first: inspect every shallow folder before exploring deeper.
+        // A recognized project already covers everything below it in the real scan.
+        var level = roots
+        while !level.isEmpty {
+            var next: [URL] = []
+            for folder in level {
+                try Task.checkCancellation()
+                if try reportProject(folder, report: report) { continue }
+                var failed = false
+                guard let entries = FileManager.default.enumerator(
+                    at: folder, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                    options: [.skipsSubdirectoryDescendants, .skipsPackageDescendants],
+                    errorHandler: { _, _ in failed = true; return true }
+                ) else { report(.foldersUnavailable); continue }
+                while let child = entries.nextObject() as? URL {
+                    try Task.checkCancellation()
+                    guard !child.lastPathComponent.hasPrefix("."),
+                          let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+                          values.isDirectory == true, values.isSymbolicLink != true,
+                          allowed(child) else { continue }
+                    next.append(child)
+                }
+                if failed { report(.foldersUnavailable) }
+            }
+            level = next
+        }
+    }
+
+    private func searchIndex(report: (ProjectSearchEvent) -> Void) throws {
+        do {
+            var seen = Set<URL>()
+            for path in try locator.indexedPaths(home) {
+                try Task.checkCancellation()
+                var folder = URL(fileURLWithPath: path).deletingLastPathComponent().standardizedFileURL
+                // Spotlight can return .git/HEAD as well as the .git directory.
+                if folder.lastPathComponent == ".git" { folder.deleteLastPathComponent() }
+                guard seen.insert(folder).inserted else { continue }
+                _ = try reportProject(folder, report: report)
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch { report(.indexUnavailable) }
+    }
+}
+
+private struct CollectedProjects {
+    let home: URL
+    var projects = Set<URL>()
+    var worktrees = Set<URL>()
+    var indexUnavailable = false
+    var foldersUnavailable = false
+
+    mutating func accept(_ event: ProjectSearchEvent) {
+        switch event {
+        case let .project(url, worktree):
+            let directory = URL(fileURLWithPath: url.standardizedFileURL.path, isDirectory: true)
+            projects.insert(directory)
+            if worktree { worktrees.insert(directory) }
+        case .refresh: break
+        case .indexUnavailable: indexUnavailable = true
+        case .foldersUnavailable: foldersUnavailable = true
+        }
+    }
+
+    var result: ProjectSuggestionResult {
+        let containers = ProjectSuggestions.commonNames.map { home.appendingPathComponent($0).standardizedFileURL }
+        // Elsewhere keep the precise outer project, never an unrelated parent folder.
+        let ordered = projects.sorted { $0.pathComponents.count < $1.pathComponents.count }
+        var roots: [URL] = []
+        var grouped: [URL: [URL]] = [:]
+        for project in ordered {
+            let root = containers.first { PathSafety.contains(project, in: $0) } ??
+                roots.first { PathSafety.contains(project, in: $0) } ?? project
+            if grouped[root] == nil { roots.append(root) }
+            grouped[root, default: []].append(project)
+        }
         let suggestions = grouped.map { root, found in
             ProjectSuggestion(url: root, projects: found.count, worktrees: found.filter(worktrees.contains).count)
         }.sorted { $0.url.path < $1.url.path }
-        return ProjectSuggestionResult(suggestions: suggestions, limited: limited || depthLimited, indexUnavailable: indexUnavailable)
+        return ProjectSuggestionResult(suggestions: suggestions, indexUnavailable: indexUnavailable, foldersUnavailable: foldersUnavailable)
     }
 }

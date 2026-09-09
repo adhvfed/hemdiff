@@ -110,10 +110,12 @@ Use **Find Automatically** on setupâ€™s scan-location step, or **Find Projectsâ€
 in Scan Locations. Review and check the suggested folders before adding them.
 Already-included locations are marked and are not removed by this dialog.
 
-Discovery reads project markers in familiar project containers, existing Spotlight
-results, and registered Git worktrees. It skips generated/dependency directories,
-symlinks, and privacy-managed home folders. Other locations can be added manually.
-The search has a 20,000-entry budget, depth limit of five, and a 20-second timeout;
-partial results are labeled. It does not measure file sizes or delete anything.
+Discovery searches eligible home folders breadth first and queries Spotlight in
+parallel. Git repositories count even without a project manifest. It skips hidden
+folders, generated/dependency directories, symlinks, app bundles, and privacy-managed
+home folders; protected locations can still be added manually. Once a project is
+found, its contents are left for the actual scan. Registered Git worktrees are also
+suggested. There is no entry cap or timeout: results appear during discovery, and
+Stop Search keeps what has been found. You can use selected folders immediately.
 Outside familiar project containers, suggestions identify individual projects,
 not their potentially unrelated parent folders.

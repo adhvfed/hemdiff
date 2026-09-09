@@ -6,7 +6,9 @@ struct FindProjectsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var result: ProjectSuggestionResult?
     @State private var checked = Set<String>()
-    @State private var error: String?
+    @State private var searchTask: Task<Void, Never>?
+    @State private var stopped = false
+    @State private var unchecked = Set<URL>()
     @State private var searching = true
     private var allIncluded: Bool {
         guard let result, !result.suggestions.isEmpty else { return false }
@@ -18,21 +20,31 @@ struct FindProjectsView: View {
             Label("Find your projects", systemImage: "magnifyingglass").font(.title2.weight(.semibold))
             Text("Select folders to add. Their files will be measured during the scan.").font(.callout).foregroundStyle(.secondary)
             if searching {
-                VStack(spacing: 12) {
-                    ProgressView()
-                    Text("Checking project folders, Spotlight, and Git worktrees…").font(.callout).foregroundStyle(.secondary)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error {
-                ContentUnavailableView("Search stopped", systemImage: "clock", description: Text(error))
-            } else if let result {
-                if result.suggestions.isEmpty {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Finding repositories and projects…").font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Stop Search") {
+                        stopped = true
+                        searchTask?.cancel()
+                    }.disabled(stopped)
+                }
+            }
+            if let result {
+                if result.suggestions.isEmpty && !searching {
                     ContentUnavailableView("No projects found", systemImage: "folder", description: Text("Choose folders manually, including locations Spotlight hasn’t indexed."))
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 14) {
                             ForEach(result.suggestions) { suggestion in
                                 Toggle(isOn: Binding(get: { included(suggestion) || checked.contains(suggestion.id) }, set: {
-                                    if $0 { checked.insert(suggestion.id) } else { checked.remove(suggestion.id) }
+                                    if $0 {
+                                        checked.insert(suggestion.id)
+                                        unchecked = unchecked.filter { !PathSafety.contains($0, in: suggestion.url) && !PathSafety.contains(suggestion.url, in: $0) }
+                                    } else {
+                                        checked.remove(suggestion.id)
+                                        unchecked.insert(suggestion.url)
+                                    }
                                 })) {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(suggestion.url.path.abbreviatingHome).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
@@ -46,33 +58,48 @@ struct FindProjectsView: View {
                         }.padding(16)
                     }.background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
                 }
-                if result.limited || result.indexUnavailable {
-                    Text(result.limited ? "Search limit reached. These are partial results; you can add more folders manually." : "Spotlight was unavailable. Suggestions come from common project folders.")
+                if result.indexUnavailable || result.foldersUnavailable {
+                    Text(result.foldersUnavailable ? "Some folders couldn’t be read. You can add locations manually." : "Spotlight is unavailable. Folder search still works.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            if stopped && !searching {
+                Text("Search stopped. You can use the folders found so far.").font(.caption).foregroundStyle(.secondary)
+            }
             Spacer(minLength: 0)
             HStack {
-                Button(searching ? "Cancel Search" : "Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { searchTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(allIncluded ? "Done" : "Use Selected Folders") {
+                    searchTask?.cancel()
                     for suggestion in result?.suggestions ?? [] where checked.contains(suggestion.id) { model.addScanRoot(suggestion.url) }
                     dismiss()
-                }.buttonStyle(.borderedProminent).tint(DiskSiftTheme.node).disabled(searching || (checked.isEmpty && !allIncluded))
+                }.buttonStyle(.borderedProminent).tint(DiskSiftTheme.node).disabled(checked.isEmpty && !allIncluded)
             }
         }.padding(24).frame(width: 520, height: 420)
-        .task {
-            do {
-                let found = try await finder.find()
-                guard !Task.isCancelled else { return }
-                result = found
-                checked = Set(found.suggestions.filter { !included($0) }.map(\.id))
-            } catch {
-                if !Task.isCancelled { self.error = "The search could not finish within its time limit. You can still choose folders manually." }
+        .onAppear {
+            searchTask = Task {
+                let found = await finder.find { update in
+                    await MainActor.run { apply(update) }
+                }
+                apply(found)
+                searching = false
             }
-            searching = false
         }
+        .onDisappear { searchTask?.cancel() }
     }
+
+    private func apply(_ update: ProjectSuggestionResult) {
+        let existing = Set(result?.suggestions.map(\.id) ?? [])
+        for suggestion in update.suggestions where !existing.contains(suggestion.id) && !included(suggestion) {
+            if !unchecked.contains(where: { PathSafety.contains($0, in: suggestion.url) || PathSafety.contains(suggestion.url, in: $0) }) {
+                checked.insert(suggestion.id)
+            }
+        }
+        checked.formIntersection(Set(update.suggestions.map(\.id)))
+        result = update
+    }
+
     private func included(_ suggestion: ProjectSuggestion) -> Bool {
         model.scanRoots.contains { PathSafety.contains(suggestion.url, in: $0) }
     }
