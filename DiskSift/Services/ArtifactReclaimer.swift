@@ -43,7 +43,7 @@ struct ArtifactReclaimer: Sendable {
             .standardizedFileURL
 
         guard url == expectedURL,
-              url.deletingLastPathComponent() == projectURL
+              PathSafety.contains(url, in: projectURL), url != projectURL
         else {
             throw ReclaimValidationError.unexpectedPath
         }
@@ -77,19 +77,7 @@ struct ArtifactReclaimer: Sendable {
             throw ReclaimValidationError.symbolicLink
         }
 
-        guard let markerName = artifact.kind.markerName else {
-            throw ReclaimValidationError.unexpectedPath
-        }
-        let marker = projectURL.appendingPathComponent(markerName)
-        guard FileManager.default.fileExists(atPath: marker.path) else {
-            throw ReclaimValidationError.missingProjectMarker
-        }
-        let markerValues = try marker.resourceValues(
-            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-        )
-        guard markerValues.isRegularFile == true,
-              markerValues.isSymbolicLink != true
-        else {
+        guard ArtifactRules.matches(artifact.kind, project: projectURL) else {
             throw ReclaimValidationError.missingProjectMarker
         }
     }

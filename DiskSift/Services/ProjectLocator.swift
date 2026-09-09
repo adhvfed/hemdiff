@@ -42,7 +42,7 @@ struct ProjectLocator: Sendable {
     var indexedPaths: @Sendable (URL) throws -> [String] = { try Self.spotlightPaths(in: $0) }
 
     private static let query =
-        #"kMDItemFSName == "Cargo.toml"c || kMDItemFSName == "package.json"c || kMDItemFSName == "Package.swift"c || kMDItemFSName == "target"c || kMDItemFSName == "node_modules"c || kMDItemFSName == ".next"c || kMDItemFSName == ".build"c || kMDItemFSName == ".git"c || kMDItemFSName == "HEAD"c"#
+        #"kMDItemFSName == "Cargo.toml"c || kMDItemFSName == "package.json"c || kMDItemFSName == "Package.swift"c || kMDItemFSName == "target"c || kMDItemFSName == "node_modules"c || kMDItemFSName == ".next"c || kMDItemFSName == ".build"c || kMDItemFSName == ".git"c || kMDItemFSName == "HEAD"c || kMDItemFSName == "turbo.json"c || kMDItemFSName == "turbo.jsonc"c || kMDItemFSName == ".terraform.lock.hcl"c || kMDItemFSName == "pyproject.toml"c || kMDItemFSName == "pytest.ini"c || kMDItemFSName == "setup.cfg"c || kMDItemFSName == "ruff.toml"c || kMDItemFSName == "mypy.ini"c || kMDItemFSName == "pom.xml"c || kMDItemFSName == "build.gradle"c || kMDItemFSName == "build.gradle.kts"c"#
 
     private static let protectedHomeFolders: Set<String> = [
         "Desktop",
@@ -313,6 +313,36 @@ struct ProjectLocator: Sendable {
                     continue
                 }
 
+                if values.isDirectory == true {
+                    let parent = url.deletingLastPathComponent()
+                    let generated = ArtifactKind.allCases.filter {
+                        !$0.isKnownContainerArtifact && $0.folderName == url.lastPathComponent
+                            && ArtifactRules.matches($0, project: parent)
+                    }
+                    if !generated.isEmpty {
+                        for kind in generated {
+                            markers.insert(ProjectMarker(projectURL: parent.standardizedFileURL, kind: kind, scopeRoot: scopeRoot ?? root))
+                        }
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                    if url.lastPathComponent == ".turbo", ArtifactRules.matches(.turboCache, project: parent) {
+                        // Only cache is an artifact; other Turbo metadata remains untouched.
+                        markers.insert(ProjectMarker(projectURL: parent.standardizedFileURL, kind: .turboCache, scopeRoot: scopeRoot ?? root))
+                    }
+                    if url.lastPathComponent == "cache", parent.lastPathComponent == ".turbo",
+                       ArtifactRules.matches(.turboCache, project: parent.deletingLastPathComponent()) {
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                    if url.lastPathComponent == "providers", parent.lastPathComponent == ".terraform",
+                       ArtifactRules.matches(.terraformProviders, project: parent.deletingLastPathComponent()) {
+                        markers.insert(ProjectMarker(projectURL: parent.deletingLastPathComponent().standardizedFileURL, kind: .terraformProviders, scopeRoot: scopeRoot ?? root))
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                }
+
                 if values.isDirectory == true,
                    Self.excludedComponents.contains(url.lastPathComponent) {
                     if url.lastPathComponent == ".git" { repositories.append(url.deletingLastPathComponent()) }
@@ -384,49 +414,19 @@ struct ProjectLocator: Sendable {
     }
 
     private func projectMarkers(for url: URL, scopeRoot: URL) -> Set<ProjectMarker> {
-        guard ["Cargo.toml", "package.json", "Package.swift"].contains(url.lastPathComponent)
-                || Self.artifactKind(for: url) != nil else { return [] }
-        guard PathSafety.contains(url, in: scopeRoot), !PathSafety.hasSymbolicLink(in: url) else { return [] }
-        let kinds: [ArtifactKind]
-        let artifactURL: URL?
-        switch url.lastPathComponent {
-        case "Cargo.toml":
-            kinds = [.rustTarget]
-            artifactURL = nil
-        case "package.json":
-            kinds = [.nodeModules, .nextBuild]
-            artifactURL = nil
-        case "Package.swift":
-            kinds = [.swiftBuild]
-            artifactURL = nil
-        default:
-            guard let artifactKind = Self.artifactKind(for: url),
-                  let markerName = artifactKind.markerName,
-                  Self.isDirectoryAndNotSymbolicLink(at: url),
-                  Self.isRegularFileAndNotSymbolicLink(
-                      at: url.deletingLastPathComponent().appendingPathComponent(markerName)
-                  )
-            else {
-                return []
-            }
-            kinds = [artifactKind]
-            artifactURL = url.standardizedFileURL
+        let name = url.lastPathComponent
+        let candidates = ArtifactKind.allCases.filter {
+            !$0.isKnownContainerArtifact && ($0.markerNames.contains(name) || $0.folderName == name)
         }
-
-        if artifactURL == nil {
-            guard Self.isRegularFileAndNotSymbolicLink(at: url) else {
-                return []
-            }
+        guard !candidates.isEmpty, PathSafety.contains(url, in: scopeRoot),
+              !PathSafety.hasSymbolicLink(in: url) else { return [] }
+        var result = Set<ProjectMarker>()
+        for kind in candidates {
+            let root = url.deletingLastPathComponent().standardizedFileURL
+            guard ArtifactRules.matches(kind, project: root) else { continue }
+            result.insert(ProjectMarker(projectURL: root, kind: kind, scopeRoot: scopeRoot.standardizedFileURL))
         }
-
-        return Set(kinds.map {
-            ProjectMarker(
-                projectURL: url.deletingLastPathComponent().standardizedFileURL,
-                kind: $0,
-                scopeRoot: scopeRoot.standardizedFileURL,
-                artifactURL: artifactURL
-            )
-        })
+        return result
     }
 
     private static func artifactKind(for url: URL) -> ArtifactKind? {

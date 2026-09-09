@@ -11,8 +11,11 @@ enum DiskSiftTheme {
     static func color(for kind: ArtifactKind) -> Color {
         switch kind {
         case .rustTarget: rust
-        case .nodeModules, .nextBuild: node
+        case .nodeModules, .nextBuild, .turboCache: node
         case .xcodeDerivedData, .swiftBuild: xcode
+        case .terraformProviders: .blue
+        case .pytestCache, .ruffCache, .mypyCache: .yellow
+        case .mavenTarget, .gradleBuild: .orange
         }
     }
 }

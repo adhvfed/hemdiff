@@ -12,11 +12,17 @@ struct ArtifactIcon: View {
                     .resizable()
                     .renderingMode(.template)
                     .scaledToFit()
-            case .nodeModules, .nextBuild:
+            case .nodeModules, .nextBuild, .turboCache:
                 Image("NodeIcon")
                     .resizable()
                     .renderingMode(.template)
                     .scaledToFit()
+            case .terraformProviders:
+                Image(systemName: "shippingbox").font(.system(size: size * 0.8))
+            case .pytestCache, .ruffCache, .mypyCache:
+                Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: size * 0.8))
+            case .mavenTarget, .gradleBuild:
+                Image(systemName: "shippingbox.fill").font(.system(size: size * 0.8))
             case .xcodeDerivedData, .swiftBuild:
                 Image(systemName: "hammer")
                     .font(.system(size: size * 0.82, weight: .medium))
@@ -120,7 +126,7 @@ struct ArtifactRow: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "\(artifact.path.abbreviatingHome)\n\nDeletion skips Trash and cannot be undone."
+                "\(artifact.path.abbreviatingHome)\n\n\(artifact.kind.consequence)\n\nDeletion skips Trash and cannot be undone."
             )
         }
     }

@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 enum ContentKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case video, audio, images, documents, archives, diskImages, virtualMachines
-    case models, databases, sourceCode, applications, other
+    case models, databases, sourceCode, applications, logs, other
 
     var id: String { rawValue }
     var title: String {
@@ -19,6 +19,7 @@ enum ContentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .databases: "Databases & datasets"
         case .sourceCode: "Code & configuration"
         case .applications: "Applications"
+        case .logs: "Logs"
         case .other: "Other files"
         }
     }
@@ -36,6 +37,7 @@ enum ContentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .databases: "externaldrive"
         case .sourceCode: "curlybraces"
         case .applications: "app"
+        case .logs: "text.alignleft"
         case .other: "doc"
         }
     }
@@ -54,6 +56,8 @@ enum ContentKind: String, Codable, CaseIterable, Identifiable, Sendable {
             default: return .other
             }
         }
+        let parts = url.lastPathComponent.lowercased().split(separator: ".")
+        if parts.contains("log") && (ext == "log" || Int(ext) != nil || ["gz", "zst", "bz2", "xz"].contains(ext)) { return .logs }
         switch ext {
         case "bin", "dat", "pt", "pth", "ckpt": return .other
         case "gguf", "ggml", "safetensors", "onnx", "mlmodel", "mlmodelc": return .models
