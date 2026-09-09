@@ -42,6 +42,51 @@ final class AppModelTests: XCTestCase {
         try await waitForScan(model)
     }
 
+    func testQuickCleanupOpensFixedReviewWithoutDeletingAndBlocksScan() throws {
+        let fixture = try ModelFixture()
+        defer { fixture.remove() }
+        let target = fixture.url.appendingPathComponent("project/target")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try Data("[workspace]".utf8).write(to: target.deletingLastPathComponent().appendingPathComponent("Cargo.toml"))
+        var snapshot = DiskSnapshot.empty
+        snapshot.artifacts = [Artifact(kind: .rustTarget, path: target.path,
+            projectPath: target.deletingLastPathComponent().path, allocatedBytes: 0,
+            createdAt: nil, modifiedAt: nil, fileIdentity: try ArtifactFileIdentity.capture(at: target))]
+        try fixture.store.save(snapshot)
+        let model = fixture.model()
+        model.isShowingSetup = true
+        model.requestQuickCleanup()
+        XCTAssertNil(model.pendingQuickCleanup)
+        model.isShowingSetup = false
+        model.requestQuickCleanup()
+        XCTAssertEqual(model.destination, .reclaim)
+        XCTAssertEqual(model.pendingQuickCleanup, snapshot.artifacts)
+        XCTAssertTrue(model.isReviewingDeletion)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
+        model.deselectAll()
+        XCTAssertEqual(model.pendingQuickCleanup, snapshot.artifacts)
+        model.startScan()
+        XCTAssertFalse(model.isScanning)
+    }
+
+    func testQuickCleanupDoesNothingWithoutArtifacts() throws {
+        let fixture = try ModelFixture()
+        defer { fixture.remove() }
+        let model = fixture.model()
+        model.requestQuickCleanup()
+        XCTAssertNil(model.pendingQuickCleanup)
+        XCTAssertFalse(model.isReviewingDeletion)
+        XCTAssertEqual(model.destination, .overview)
+    }
+
+    func testMenuBarIconHasStatusItemSizeAndTemplateRendering() {
+        let image = MenuBarIcon.image
+        XCTAssertEqual(image.size.width, 22)
+        XCTAssertEqual(image.size.height, 22)
+        XCTAssertTrue(image.isTemplate)
+        XCTAssertNotNil(image.tiffRepresentation)
+    }
+
     private func waitForScan(_ model: AppModel) async throws {
         let deadline = Date().addingTimeInterval(5)
         while model.isScanning && Date() < deadline {

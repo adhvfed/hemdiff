@@ -7,6 +7,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var volume: VolumeSnapshot?
     @Published private(set) var isScanning = false
     @Published private(set) var scanProgress: ScanProgress?
+    @Published var destination: AppDestination? = .overview
+    @Published var pendingQuickCleanup: [Artifact]?
     @Published var selectedArtifactIDs = Set<Artifact.ID>()
     @Published var errorMessage: String?
     @Published var noticeMessage: String?
@@ -33,7 +35,7 @@ final class AppModel: ObservableObject {
         setupPage = 0
         if isSnapshotStale { startScan() }
     }
-    var isReviewingDeletion = false
+    @Published var isReviewingDeletion = false
     private let fileOperations: FileOperations
     var isBusy: Bool { isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
 
@@ -205,6 +207,13 @@ final class AppModel: ObservableObject {
 
     func deselectAll() {
         selectedArtifactIDs.removeAll()
+    }
+
+    func requestQuickCleanup() {
+        guard !isBusy, !isReviewingDeletion, !isShowingSetup, !snapshot.artifacts.isEmpty else { return }
+        isReviewingDeletion = true
+        destination = .reclaim
+        pendingQuickCleanup = snapshot.artifacts.sorted { $0.allocatedBytes > $1.allocatedBytes }
     }
 
     func reclaimReviewed(_ artifacts: [Artifact]) async {

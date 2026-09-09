@@ -34,16 +34,15 @@ struct RootView: View {
     @Environment(\.controlActiveState) private var controlState
     @EnvironmentObject private var model: AppModel
     @StateObject private var fileReview = FileReviewModel()
-    @State private var destination: AppDestination? = .overview
 
     var body: some View {
         NavigationSplitView {
-            List(AppDestination.allCases, selection: $destination) { item in
+            List(AppDestination.allCases, selection: $model.destination) { item in
                 HStack {
                     Label {
-                        Text(item.title).foregroundStyle(destination == item && controlState != .inactive ? Color.white : Color.primary)
+                        Text(item.title).foregroundStyle(model.destination == item && controlState != .inactive ? Color.white : Color.primary)
                     } icon: {
-                        Image(systemName: item.icon).foregroundStyle(destination == item && controlState != .inactive ? Color.white : DiskSiftTheme.node)
+                        Image(systemName: item.icon).foregroundStyle(model.destination == item && controlState != .inactive ? Color.white : DiskSiftTheme.node)
                     }
                     Spacer(minLength: 4)
                     if item == .reclaim && !model.snapshot.artifacts.isEmpty {
@@ -67,17 +66,17 @@ struct RootView: View {
             }
         } detail: {
             Group {
-                switch destination ?? .overview {
+                switch model.destination ?? .overview {
                 case .overview:
-                    OverviewView(openReclaim: { destination = .reclaim }, openFiles: { kind in
+                    OverviewView(openReclaim: { model.destination = .reclaim }, openFiles: { kind in
                         fileReview.kinds = kind.map { [$0] } ?? []
                         fileReview.search = ""
-                        destination = .files
-                    }, openTrash: { destination = .trash })
+                        model.destination = .files
+                    }, openTrash: { model.destination = .trash })
                 case .reclaim:
                     ReclaimView()
                 case .files:
-                    FilesView(review: fileReview, openLocations: { destination = .locations })
+                    FilesView(review: fileReview, openLocations: { model.destination = .locations })
                 case .trash:
                     TrashView()
                 case .locations:

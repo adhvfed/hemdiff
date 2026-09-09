@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct DiskSiftApp: App {
     @StateObject private var model = AppModel()
+    @AppStorage("showsMenuBarExtra") private var showsMenuBarExtra = true
 
     var body: some Scene {
         Window("Hemdiff", id: "main") {
@@ -15,6 +16,7 @@ struct DiskSiftApp: App {
             SetupCommands(model: model)
             CommandGroup(after: .sidebar) {
                 Divider()
+                Toggle("Show Menu Bar Icon", isOn: $showsMenuBarExtra)
                 Button(model.isScanning ? "Cancel Scan" : "Scan Now") {
                     model.isScanning ? model.cancelScan() : model.startScan()
                 }
@@ -22,11 +24,11 @@ struct DiskSiftApp: App {
             }
         }
 
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $showsMenuBarExtra) {
             MenuBarPanel()
                 .environmentObject(model)
         } label: {
-            Image("MenuBarIcon")
+            Image(nsImage: MenuBarIcon.image)
                 .renderingMode(.template)
                 .accessibilityLabel("Hemdiff")
         }
@@ -45,5 +47,15 @@ private struct SetupCommands: Commands {
                 model.showSetup()
             }.disabled(model.isReviewingDeletion || model.isManagingFiles || !model.reclaimingArtifactIDs.isEmpty)
         }
+    }
+}
+
+enum MenuBarIcon {
+    static var image: NSImage {
+        let image = (NSImage(named: "MenuBarIcon")?.copy() as? NSImage) ??
+            NSImage(systemSymbolName: "externaldrive", accessibilityDescription: "Hemdiff")!
+        image.size = NSSize(width: 22, height: 22)
+        image.isTemplate = true
+        return image
     }
 }

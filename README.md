@@ -125,3 +125,8 @@ individual suggestions. Expand a workspace to choose projects separately, or use
 its menu to select a parent folder explicitly. Selecting a workspace covers future
 projects too; selecting its children covers only those projects. Live regrouping
 preserves unchecked choices.
+
+
+The menu bar panel offers **Scan Now** and **Clean Build Output…**. Cleanup opens
+a fixed list of detected build folders for confirmation before deleting anything.
+Use **View → Show Menu Bar Icon** to restore the menu bar item if it is hidden.

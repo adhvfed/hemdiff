@@ -100,6 +100,12 @@ struct ReclaimView: View {
             }.padding(.horizontal, 28).padding(.vertical, 18).background(.bar).overlay(alignment: .top) { Divider() }
         }
         .navigationTitle("Cleanup")
+        .onChange(of: model.pendingQuickCleanup, initial: true) { _, requested in
+            guard let requested else { return }
+            pending = requested
+            model.pendingQuickCleanup = nil
+            confirmsReclaim = true
+        }
         .sheet(isPresented: $confirmsReclaim) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Delete build output?").font(.title2.weight(.semibold))
@@ -114,7 +120,7 @@ struct ReclaimView: View {
                         }
                     }
                 }.frame(maxHeight: 240)
-                Text("Deletion skips Trash and cannot be undone.").font(.callout).foregroundStyle(.secondary)
+                Text("Stop running builds and dev servers before cleanup. Deletion skips Trash and cannot be undone.").font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Spacer()
                     Button("Cancel") { confirmsReclaim = false }.keyboardShortcut(.cancelAction)
