@@ -1,16 +1,20 @@
 import Foundation
 
 struct ArtifactScanner: Sendable {
+    var locator = ProjectLocator()
+
     func scan(
         configuration: ScanConfiguration,
         progress: @escaping @Sendable (ScanProgress) -> Void = { _ in }
     ) async throws -> DiskSnapshot {
         let work = Task.detached(priority: .utility) {
-            let discovery = try ProjectLocator().locate(configuration: configuration)
+            let startedAt = Date()
+            let discovery = try locator.locate(configuration: configuration)
             return try Self.measure(
                 discovery: discovery,
                 configuration: configuration,
-                progress: progress
+                progress: progress,
+                startedAt: startedAt
             )
         }
 
@@ -57,9 +61,9 @@ struct ArtifactScanner: Sendable {
     private static func measure(
         discovery: ProjectDiscovery,
         configuration: ScanConfiguration,
-        progress: @escaping @Sendable (ScanProgress) -> Void
+        progress: @escaping @Sendable (ScanProgress) -> Void,
+        startedAt: Date
     ) throws -> DiskSnapshot {
-        let startedAt = Date()
         var artifacts: [Artifact] = []
         var categoryBytes: [String: Int64] = [:]
         var categoryMetadata: [String: (name: String, path: String)] = [:]
@@ -69,8 +73,14 @@ struct ArtifactScanner: Sendable {
         var bytesMeasured: Int64 = 0
         var lastProgress = Date.distantPast
         var measuredPaths = Set<String>()
+        var measuredContainers: [URL] = []
 
-        for marker in discovery.markers {
+        let orderedMarkers = discovery.markers.sorted {
+            let left = $0.artifactURL ?? $0.projectURL.appendingPathComponent($0.kind.folderName)
+            let right = $1.artifactURL ?? $1.projectURL.appendingPathComponent($1.kind.folderName)
+            return left.path.count == right.path.count ? left.path < right.path : left.path.count < right.path.count
+        }
+        for marker in orderedMarkers {
             try Task.checkCancellation()
             let artifactURL = (
                 marker.artifactURL
@@ -80,6 +90,7 @@ struct ArtifactScanner: Sendable {
                     )
             ).standardizedFileURL
             guard measuredPaths.insert(artifactURL.path).inserted else { continue }
+            guard !measuredContainers.contains(where: { PathSafety.contains(artifactURL, in: $0) }) else { continue }
 
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(
@@ -90,13 +101,19 @@ struct ArtifactScanner: Sendable {
             }
 
             do {
+                guard !PathSafety.hasSymbolicLink(in: artifactURL) else { continue }
                 let values = try artifactURL.resourceValues(
                     forKeys: [.isSymbolicLinkKey, .creationDateKey, .contentModificationDateKey]
                 )
                 guard values.isSymbolicLink != true else { continue }
 
-                let measured = try measureDirectory(artifactURL)
                 let fileIdentity = try ArtifactFileIdentity.capture(at: artifactURL)
+                let measured = try measureDirectory(artifactURL)
+                guard try ArtifactFileIdentity.capture(at: artifactURL) == fileIdentity else {
+                    errorsSkipped += 1
+                    continue
+                }
+                measuredContainers.append(artifactURL)
                 filesVisited += measured.files
                 directoriesVisited += measured.directories
                 errorsSkipped += measured.errors
@@ -170,40 +187,9 @@ struct ArtifactScanner: Sendable {
     }
 
     private static func gitWorktreeName(for projectURL: URL, stoppingAt root: URL) -> String? {
-        var candidate = projectURL.standardizedFileURL
-        let boundary = root.standardizedFileURL.path
-
-        while candidate.path.hasPrefix(boundary) {
-            let gitPointer = candidate.appendingPathComponent(".git", isDirectory: false)
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: gitPointer.path, isDirectory: &isDirectory) {
-                if isDirectory.boolValue {
-                    return nil
-                }
-
-                if let contents = try? String(contentsOf: gitPointer, encoding: .utf8),
-                   let gitDirectory = contents
-                       .split(separator: "\n")
-                       .first?
-                       .split(separator: ":", maxSplits: 1)
-                       .last?
-                       .trimmingCharacters(in: .whitespacesAndNewlines),
-                   !gitDirectory.isEmpty {
-                    let components = URL(fileURLWithPath: gitDirectory).pathComponents
-                    if let worktreesIndex = components.lastIndex(of: "worktrees"),
-                       components.indices.contains(worktreesIndex + 1) {
-                        return components[worktreesIndex + 1]
-                    }
-                }
-                return candidate.lastPathComponent
-            }
-
-            guard candidate.path != boundary else { break }
-            let parent = candidate.deletingLastPathComponent()
-            guard parent.path != candidate.path else { break }
-            candidate = parent
-        }
-        return nil
+        guard let repository = GitRepository.enclosing(projectURL, stoppingAt: root),
+              repository.isLinkedWorktree else { return nil }
+        return repository.root.lastPathComponent
     }
 
     private static func measureDirectory(_ url: URL) throws -> (
@@ -212,41 +198,20 @@ struct ArtifactScanner: Sendable {
         directories: Int,
         errors: Int
     ) {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/taskpolicy")
-        process.arguments = [
+        let data = try ScanProcess.output(executable: "/usr/sbin/taskpolicy", arguments: [
             "-b",
             "-d", "throttle",
             "-c", "utility",
             "/usr/bin/du",
             "-skx",
             url.path,
-        ]
-        process.standardOutput = output
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            return (0, 0, 1, 1)
-        }
-
-        while process.isRunning {
-            if Task.isCancelled {
-                process.terminate()
-                throw CancellationError()
-            }
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard process.terminationStatus == 0,
-              let text = String(data: data, encoding: .utf8),
+        ])
+        guard let text = String(data: data, encoding: .utf8),
               let kilobytesText = text.split(whereSeparator: \.isWhitespace).first,
-              let kilobytes = Int64(kilobytesText)
+              let kilobytes = Int64(kilobytesText), kilobytes >= 0,
+              kilobytes <= Int64.max / 1_024
         else {
-            return (0, 0, 1, 1)
+            throw CocoaError(.fileReadUnknown)
         }
 
         return (kilobytes * 1_024, 0, 1, 0)
@@ -259,6 +224,9 @@ struct ArtifactScanner: Sendable {
     ) {
         let rootComponents = root.standardizedFileURL.pathComponents
         let urlComponents = url.standardizedFileURL.pathComponents
+        if rootComponents == urlComponents {
+            return (root.path, root.lastPathComponent, root.path)
+        }
         let relative = urlComponents.dropFirst(rootComponents.count)
         let first = relative.first ?? root.lastPathComponent
         let categoryURL = root.appendingPathComponent(first)

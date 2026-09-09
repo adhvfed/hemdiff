@@ -3,6 +3,22 @@ import XCTest
 @testable import DiskSift
 
 final class ProjectLocatorTests: XCTestCase {
+    func testIndexedAndExplicitPathsRejectSymlinkAncestors() throws {
+        let fixture = try TemporaryDirectory()
+        defer { fixture.remove() }
+        let real = fixture.url.appendingPathComponent("real/project")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        try Data("[workspace]".utf8).write(to: real.appendingPathComponent("Cargo.toml"))
+        let alias = fixture.url.appendingPathComponent("alias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: fixture.url.appendingPathComponent("real"))
+        let locator = ProjectLocator(indexedPaths: { _ in [alias.appendingPathComponent("project/Cargo.toml").path] })
+        let discovery = try locator.locate(configuration: ScanConfiguration(
+            automaticDiscoveryRoot: fixture.url, explicitRoots: [alias.appendingPathComponent("project")]
+        ))
+        XCTAssertTrue(discovery.markers.isEmpty)
+        XCTAssertEqual(discovery.errorsSkipped, 1)
+    }
+
     func testAutomaticDiscoveryFindsXcodeDerivedDataChildren() throws {
         let fixture = try TemporaryDirectory()
         defer { fixture.remove() }

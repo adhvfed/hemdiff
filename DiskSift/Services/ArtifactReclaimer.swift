@@ -28,6 +28,9 @@ struct ArtifactReclaimer: Sendable {
     }
 
     func validate(_ artifact: Artifact) throws {
+        guard !PathSafety.hasSymbolicLink(in: artifact.url) else {
+            throw ReclaimValidationError.symbolicLink
+        }
         if artifact.kind.isKnownContainerArtifact {
             try validateKnownContainerArtifact(artifact)
             return

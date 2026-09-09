@@ -3,6 +3,22 @@ import XCTest
 @testable import DiskSift
 
 final class ArtifactScannerTests: XCTestCase {
+    func testOverlappingArtifactsAreMeasuredOnlyOnce() async throws {
+        let fixture = try TemporaryDirectory()
+        defer { fixture.remove() }
+        let parent = try fixture.directory("project/node_modules/child/target")
+        try fixture.file("project/package.json", contents: "{}")
+        try fixture.file("project/node_modules/child/Cargo.toml", contents: "[workspace]")
+        try fixture.dataFile("project/node_modules/child/target/output", byteCount: 4_096)
+        let markerPath = fixture.url.appendingPathComponent("project/package.json").path
+        let scanner = ArtifactScanner(locator: ProjectLocator(indexedPaths: { _ in [markerPath] }))
+        let snapshot = try await scanner.scan(configuration: ScanConfiguration(
+            automaticDiscoveryRoot: fixture.url, explicitRoots: [parent.deletingLastPathComponent()]
+        ))
+        XCTAssertEqual(snapshot.artifacts.map(\.kind), [.nodeModules])
+        XCTAssertGreaterThan(snapshot.artifactBytes, 0)
+    }
+
     func testFindsXcodeDerivedDataAndSwiftPackageBuildOutput() async throws {
         let fixture = try TemporaryDirectory()
         defer { fixture.remove() }
@@ -76,14 +92,19 @@ final class ArtifactScannerTests: XCTestCase {
         try fixture.dataFile("Projects/LooseTarget/target/object.o", byteCount: 4_096)
 
         _ = try fixture.directory("Projects/Web/node_modules/pkg")
+        _ = try fixture.directory("Projects/Web/.next/cache")
         try fixture.file("Projects/Web/package.json", contents: "{}")
         try fixture.dataFile("Projects/Web/node_modules/pkg/index.js", byteCount: 12_000)
+        try fixture.dataFile("Projects/Web/.next/cache/bundle", byteCount: 24_000)
 
         _ = rust
         let snapshot = try await ArtifactScanner().scan(roots: [fixture.url])
 
-        XCTAssertEqual(snapshot.artifacts.count, 2)
-        XCTAssertEqual(Set(snapshot.artifacts.map(\.kind)), [.rustTarget, .nodeModules])
+        XCTAssertEqual(snapshot.artifacts.count, 3)
+        XCTAssertEqual(
+            Set(snapshot.artifacts.map(\.kind)),
+            [.rustTarget, .nodeModules, .nextBuild]
+        )
         XCTAssertTrue(snapshot.artifacts.allSatisfy { $0.allocatedBytes > 0 })
         XCTAssertFalse(snapshot.artifacts.contains { $0.projectName == "LooseTarget" })
     }
@@ -160,8 +181,13 @@ final class ArtifactScannerTests: XCTestCase {
         try fixture.file("\(worktree)/Cargo.toml", contents: "[package]")
         try fixture.file(
             "\(worktree)/.git",
-            contents: "gitdir: /tmp/main-repository/.git/worktrees/feature-cleanup\n"
+            contents: "gitdir: ../../main/.git/worktrees/feature-cleanup\n"
         )
+        _ = try fixture.directory("main/.git/objects")
+        try fixture.file("main/.git/HEAD", contents: "ref: refs/heads/main\n")
+        try fixture.file("main/.git/worktrees/feature-cleanup/HEAD", contents: "abc\n")
+        try fixture.file("main/.git/worktrees/feature-cleanup/commondir", contents: "../..\n")
+        try fixture.file("main/.git/worktrees/feature-cleanup/gitdir", contents: fixture.url.appendingPathComponent("\(worktree)/.git").path + "\n")
         try fixture.dataFile("\(worktree)/target/debug/app", byteCount: 2_048)
 
         let snapshot = try await ArtifactScanner().scan(roots: [fixture.url])

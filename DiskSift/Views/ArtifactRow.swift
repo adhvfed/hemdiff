@@ -12,7 +12,7 @@ struct ArtifactIcon: View {
                     .resizable()
                     .renderingMode(.template)
                     .scaledToFit()
-            case .nodeModules:
+            case .nodeModules, .nextBuild:
                 Image("NodeIcon")
                     .resizable()
                     .renderingMode(.template)
@@ -103,7 +103,7 @@ struct ArtifactRow: View {
                 }
             }
             .buttonStyle(.borderless)
-            .disabled(model.reclaimingArtifactIDs.contains(artifact.id))
+            .disabled(model.isScanning || !model.reclaimingArtifactIDs.isEmpty)
             .help("Permanently delete this folder")
             .accessibilityLabel("Clean \(artifact.kind.title) for \(artifact.projectName)")
         }

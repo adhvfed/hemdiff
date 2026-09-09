@@ -39,7 +39,8 @@ struct MenuBarPanel: View {
                         StorageRail(
                             volume: volume,
                             rustBytes: model.snapshot.bytes(for: .rustTarget),
-                            nodeBytes: model.snapshot.bytes(for: .nodeModules),
+                            nodeBytes: model.snapshot.bytes(for: .nodeModules)
+                                + model.snapshot.bytes(for: .nextBuild),
                             appleBytes: developerArtifactBytes
                         )
                         .frame(height: 14)
@@ -60,7 +61,10 @@ struct MenuBarPanel: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("node_modules")
                             .font(.caption)
-                        Text(ByteText.compact(model.snapshot.bytes(for: .nodeModules)))
+                        Text(ByteText.compact(
+                            model.snapshot.bytes(for: .nodeModules)
+                                + model.snapshot.bytes(for: .nextBuild)
+                        ))
                             .font(.callout.weight(.semibold))
                             .monospacedDigit()
                     }

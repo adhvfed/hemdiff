@@ -58,10 +58,16 @@ final class SnapshotStoreTests: XCTestCase {
         )
         var snapshot = DiskSnapshot.empty
         snapshot.artifacts = [first, second]
+        snapshot.categories = [
+            ScannedCategory(id: "/tmp", name: "tmp", path: "/tmp", allocatedBytes: 30),
+        ]
 
         let result = snapshot.removingArtifacts(withIDs: [first.id])
         XCTAssertEqual(result.artifacts, [second])
         XCTAssertEqual(result.artifactBytes, 20)
+        XCTAssertEqual(result.categories.first?.allocatedBytes, 20)
+        XCTAssertEqual(result.removingArtifacts(withIDs: [first.id]).categories, result.categories)
+        XCTAssertTrue(result.removingArtifacts(withIDs: [second.id]).categories.isEmpty)
     }
 
     func testFreshnessRejectsEmptyFutureAndExpiredSnapshots() {

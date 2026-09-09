@@ -3,6 +3,7 @@ import Foundation
 enum ArtifactKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case rustTarget
     case nodeModules
+    case nextBuild
     case xcodeDerivedData
     case swiftBuild
 
@@ -12,6 +13,7 @@ enum ArtifactKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .rustTarget: "Rust target"
         case .nodeModules: "node_modules"
+        case .nextBuild: "Next.js .next"
         case .xcodeDerivedData: "Xcode DerivedData"
         case .swiftBuild: "SwiftPM .build"
         }
@@ -21,6 +23,7 @@ enum ArtifactKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .rustTarget: "target"
         case .nodeModules: "node_modules"
+        case .nextBuild: ".next"
         case .xcodeDerivedData: "DerivedData"
         case .swiftBuild: ".build"
         }
@@ -30,6 +33,7 @@ enum ArtifactKind: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .rustTarget: "Cargo.toml"
         case .nodeModules: "package.json"
+        case .nextBuild: "package.json"
         case .xcodeDerivedData: nil
         case .swiftBuild: "Package.swift"
         }
@@ -96,7 +100,7 @@ struct Artifact: Identifiable, Codable, Hashable, Sendable {
                 return "Module cache"
             }
             return url.lastPathComponent
-        case .rustTarget, .nodeModules, .swiftBuild:
+        case .rustTarget, .nodeModules, .nextBuild, .swiftBuild:
             return projectURL.lastPathComponent
         }
     }
@@ -110,9 +114,8 @@ struct ScannedCategory: Identifiable, Codable, Hashable, Sendable {
 }
 
 struct DiskSnapshot: Codable, Equatable, Sendable {
-    // Discovery now records artifact directories found directly from Spotlight,
-    // so an older cache would materially undercount the inventory.
-    static let currentSchemaVersion = 6
+    // Registered worktrees and stricter path validation change the inventory.
+    static let currentSchemaVersion = 8
 
     let schemaVersion: Int
     let roots: [String]
@@ -156,7 +159,19 @@ struct DiskSnapshot: Codable, Equatable, Sendable {
 
     func removingArtifacts(withIDs ids: Set<Artifact.ID>) -> DiskSnapshot {
         var copy = self
+        for artifact in artifacts where ids.contains(artifact.id) {
+            if let index = copy.categories.indices
+                .filter({ PathSafety.contains(artifact.projectURL, in: URL(fileURLWithPath: copy.categories[$0].path)) })
+                .max(by: { copy.categories[$0].path.count < copy.categories[$1].path.count }) {
+                let category = copy.categories[index]
+                copy.categories[index] = ScannedCategory(
+                    id: category.id, name: category.name, path: category.path,
+                    allocatedBytes: max(0, category.allocatedBytes - artifact.allocatedBytes)
+                )
+            }
+        }
         copy.artifacts.removeAll { ids.contains($0.id) }
+        copy.categories.removeAll { $0.allocatedBytes == 0 }
         return copy
     }
 }

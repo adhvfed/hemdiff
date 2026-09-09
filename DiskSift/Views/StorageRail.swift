@@ -60,7 +60,11 @@ struct StorageLegend: View {
     var body: some View {
         HStack(spacing: 22) {
             legendItem("Rust target", bytes: snapshot.bytes(for: .rustTarget), color: DiskSiftTheme.rust)
-            legendItem("node_modules", bytes: snapshot.bytes(for: .nodeModules), color: DiskSiftTheme.node)
+            legendItem(
+                "Node artifacts",
+                bytes: snapshot.bytes(for: .nodeModules) + snapshot.bytes(for: .nextBuild),
+                color: DiskSiftTheme.node
+            )
             legendItem("Xcode / SwiftPM", bytes: appleBytes, color: DiskSiftTheme.xcode)
             legendItem("Other used", bytes: otherBytes, color: .primary.opacity(0.72))
             Spacer(minLength: 8)

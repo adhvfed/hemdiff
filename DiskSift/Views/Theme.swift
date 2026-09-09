@@ -11,7 +11,7 @@ enum DiskSiftTheme {
     static func color(for kind: ArtifactKind) -> Color {
         switch kind {
         case .rustTarget: rust
-        case .nodeModules: node
+        case .nodeModules, .nextBuild: node
         case .xcodeDerivedData, .swiftBuild: xcode
         }
     }

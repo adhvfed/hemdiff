@@ -17,8 +17,11 @@ final class AppModel: ObservableObject {
     private let volumeMonitor: VolumeMonitor
     private let snapshotStore: SnapshotStore
     private let reclaimer: ArtifactReclaimer
+    private let homeDirectory: URL
+    private let defaults: UserDefaults
     private var scanTask: Task<Void, Never>?
     private var volumeTask: Task<Void, Never>?
+    private var scanGeneration = UUID()
 
     static let freshnessInterval: TimeInterval = 6 * 60 * 60
     private static let rootsDefaultsKey = "scanRootPaths"
@@ -27,27 +30,42 @@ final class AppModel: ObservableObject {
         scanner: ArtifactScanner = ArtifactScanner(),
         volumeMonitor: VolumeMonitor = VolumeMonitor(),
         snapshotStore: SnapshotStore = SnapshotStore(),
-        reclaimer: ArtifactReclaimer = ArtifactReclaimer()
+        reclaimer: ArtifactReclaimer = ArtifactReclaimer(),
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        defaults: UserDefaults = .standard,
+        startsAutomatically: Bool = true
     ) {
         self.scanner = scanner
         self.volumeMonitor = volumeMonitor
         self.snapshotStore = snapshotStore
         self.reclaimer = reclaimer
+        self.homeDirectory = homeDirectory.standardizedFileURL
+        self.defaults = defaults
         snapshot = (try? snapshotStore.load()) ?? .empty
 
-        let savedPaths = UserDefaults.standard.stringArray(forKey: Self.rootsDefaultsKey)
+        let savedPaths = defaults.stringArray(forKey: Self.rootsDefaultsKey)
         if let savedPaths {
             scanRoots = savedPaths.map { URL(fileURLWithPath: $0, isDirectory: true) }
         } else {
-            scanRoots = []
+            let projects = homeDirectory
+                .appendingPathComponent("Projects", isDirectory: true)
+            var isDirectory: ObjCBool = false
+            scanRoots = FileManager.default.fileExists(
+                atPath: projects.path,
+                isDirectory: &isDirectory
+            ) && isDirectory.boolValue ? [projects] : []
         }
 
+        guard startsAutomatically else { return }
         refreshVolume()
         volumeTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 guard !Task.isCancelled else { break }
                 self?.refreshVolume()
+                if self?.isSnapshotStale == true {
+                    self?.startScan()
+                }
             }
         }
 
@@ -65,7 +83,10 @@ final class AppModel: ObservableObject {
     }
 
     var isSnapshotStale: Bool {
-        !snapshot.isFresh(maxAge: Self.freshnessInterval)
+        let expectedRoots = [homeDirectory.path]
+            + ArtifactScanner.normalizedRoots(scanRoots).map(\.path)
+        return Set(snapshot.roots) != Set(expectedRoots)
+            || !snapshot.isFresh(maxAge: Self.freshnessInterval)
     }
 
     var selectedArtifacts: [Artifact] {
@@ -85,7 +106,8 @@ final class AppModel: ObservableObject {
     }
 
     func startScan() {
-        guard !isScanning else { return }
+        guard !isScanning, reclaimingArtifactIDs.isEmpty else { return }
+        scanGeneration = UUID()
         isScanning = true
         scanProgress = ScanProgress(
             currentPath: "Using the macOS project index",
@@ -97,13 +119,17 @@ final class AppModel: ObservableObject {
         noticeMessage = nil
 
         let configuration = ScanConfiguration(
-            automaticDiscoveryRoot: FileManager.default.homeDirectoryForCurrentUser,
+            automaticDiscoveryRoot: homeDirectory,
             explicitRoots: scanRoots
         )
         let scanner = scanner
         let store = snapshotStore
-        let progressRelay = ScanProgressRelay(model: self)
+        let progressRelay = ScanProgressRelay(model: self, generation: scanGeneration)
         scanTask = Task { [weak self] in
+            defer {
+                self?.isScanning = false
+                self?.scanProgress = nil
+            }
             do {
                 let completed = try await scanner.scan(configuration: configuration) { progress in
                     progressRelay.send(progress)
@@ -111,8 +137,6 @@ final class AppModel: ObservableObject {
                 guard let self, !Task.isCancelled else { return }
                 self.snapshot = completed
                 self.selectedArtifactIDs.formIntersection(Set(completed.artifacts.map(\.id)))
-                self.isScanning = false
-                self.scanProgress = nil
                 self.refreshVolume()
                 do {
                     try store.save(completed)
@@ -120,11 +144,8 @@ final class AppModel: ObservableObject {
                     self.errorMessage = "The scan finished, but its cache could not be saved."
                 }
             } catch is CancellationError {
-                self?.isScanning = false
-                self?.scanProgress = nil
+                // Preserve the previous inventory.
             } catch {
-                self?.isScanning = false
-                self?.scanProgress = nil
                 self?.errorMessage = "Scan stopped: \(error.localizedDescription)"
             }
         }
@@ -132,8 +153,7 @@ final class AppModel: ObservableObject {
 
     func cancelScan() {
         scanTask?.cancel()
-        scanTask = nil
-        isScanning = false
+        // Keep the scan slot occupied until discovery and its subprocess exit.
         scanProgress = nil
     }
 
@@ -168,6 +188,10 @@ final class AppModel: ObservableObject {
 
     private func reclaim(_ artifacts: [Artifact]) async {
         guard !artifacts.isEmpty else { return }
+        guard !isScanning, reclaimingArtifactIDs.isEmpty else {
+            errorMessage = "Wait for the current scan or cleanup to finish before deleting folders."
+            return
+        }
         let artifactIDs = Set(artifacts.map(\.id))
         guard reclaimingArtifactIDs.isDisjoint(with: artifactIDs) else {
             errorMessage = "Cleanup is already in progress for one of those folders."
@@ -205,25 +229,29 @@ final class AppModel: ObservableObject {
         persistRoots()
     }
 
-    fileprivate func receiveScanProgress(_ progress: ScanProgress) {
+    fileprivate func receiveScanProgress(_ progress: ScanProgress, generation: UUID) {
+        guard generation == scanGeneration, isScanning, scanTask?.isCancelled != true else { return }
         scanProgress = progress
     }
 
     private func persistRoots() {
-        UserDefaults.standard.set(scanRoots.map(\.path), forKey: Self.rootsDefaultsKey)
+        defaults.set(scanRoots.map(\.path), forKey: Self.rootsDefaultsKey)
     }
 }
 
 private final class ScanProgressRelay: @unchecked Sendable {
     weak var model: AppModel?
+    let generation: UUID
 
-    init(model: AppModel) {
+    init(model: AppModel, generation: UUID) {
         self.model = model
+        self.generation = generation
     }
 
     func send(_ progress: ScanProgress) {
         DispatchQueue.main.async { [weak self] in
-            self?.model?.receiveScanProgress(progress)
+            guard let self else { return }
+            self.model?.receiveScanProgress(progress, generation: self.generation)
         }
     }
 }

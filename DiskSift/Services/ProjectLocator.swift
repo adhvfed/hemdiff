@@ -34,11 +34,14 @@ struct ProjectMarker: Hashable, Sendable {
 struct ProjectDiscovery: Sendable {
     let markers: [ProjectMarker]
     let errorsSkipped: Int
+    var repositoryRoots: [URL] = []
 }
 
 struct ProjectLocator: Sendable {
+    var indexedPaths: @Sendable (URL) throws -> [String] = { try Self.spotlightPaths(in: $0) }
+
     private static let query =
-        #"kMDItemFSName == "Cargo.toml"c || kMDItemFSName == "package.json"c || kMDItemFSName == "Package.swift"c || kMDItemFSName == "target"c || kMDItemFSName == "node_modules"c || kMDItemFSName == ".build"c"#
+        #"kMDItemFSName == "Cargo.toml"c || kMDItemFSName == "package.json"c || kMDItemFSName == "Package.swift"c || kMDItemFSName == "target"c || kMDItemFSName == "node_modules"c || kMDItemFSName == ".next"c || kMDItemFSName == ".build"c || kMDItemFSName == ".git"c || kMDItemFSName == "HEAD"c"#
 
     private static let protectedHomeFolders: Set<String> = [
         "Desktop",
@@ -59,6 +62,7 @@ struct ProjectLocator: Sendable {
         ".git",
         ".local",
         ".npm",
+        ".next",
         ".orbstack",
         ".rustup",
         "DerivedData",
@@ -79,24 +83,29 @@ struct ProjectLocator: Sendable {
     func locate(configuration: ScanConfiguration) throws -> ProjectDiscovery {
         var markers = Set<ProjectMarker>()
         var errorsSkipped = 0
+        var repositories = Set<URL>()
 
         if let automaticRoot = configuration.automaticDiscoveryRoot {
             do {
-                let paths = try spotlightPaths(in: automaticRoot)
+                let paths = try indexedPaths(automaticRoot)
                 for path in paths {
                     try Task.checkCancellation()
                     let url = URL(fileURLWithPath: path)
                     let artifactKind = Self.artifactKind(for: url)
+                    let isGitMarker = url.lastPathComponent == ".git" || url.lastPathComponent == "HEAD"
                     guard !Self.isAutomaticallyExcluded(
-                        url,
+                        isGitMarker ? url.deletingLastPathComponent() : url,
                         home: automaticRoot,
                         allowingArtifactKind: artifactKind
-                    ),
-                          let marker = marker(for: url, scopeRoot: automaticRoot)
+                    )
                     else {
                         continue
                     }
-                    markers.insert(marker)
+                    if isGitMarker {
+                        repositories.insert(url.deletingLastPathComponent())
+                    } else {
+                        markers.formUnion(projectMarkers(for: url, scopeRoot: automaticRoot))
+                    }
                 }
             } catch is CancellationError {
                 throw CancellationError()
@@ -116,30 +125,46 @@ struct ProjectLocator: Sendable {
         for root in ArtifactScanner.normalizedRoots(configuration.explicitRoots) {
             try Task.checkCancellation()
 
+            let fallback = try walkMarkers(in: root)
+            markers.formUnion(fallback.markers)
+            repositories.formUnion(fallback.repositoryRoots)
+            errorsSkipped += fallback.errorsSkipped
+        }
+
+        for marker in markers {
+            try Task.checkCancellation()
+            if let repository = GitRepository.enclosing(marker.projectURL, stoppingAt: marker.scopeRoot) {
+                repositories.insert(repository.root)
+            }
+        }
+        var pending = Array(repositories)
+        var visitedRepositories = Set<String>()
+        var walkedWorktrees = Set<String>()
+        while let root = pending.popLast() {
+            try Task.checkCancellation()
+            guard let repository = GitRepository.at(root),
+                  visitedRepositories.insert(repository.commonDirectory.path).inserted else { continue }
             do {
-                for path in try spotlightPaths(in: root) {
-                    let url = URL(fileURLWithPath: path)
-                    let artifactKind = Self.artifactKind(for: url)
-                    guard !Self.containsDependencyOrCacheComponent(
-                        url,
-                        relativeTo: root,
-                        allowingArtifactKind: artifactKind
-                    ),
-                          let marker = marker(for: url, scopeRoot: root)
-                    else {
-                        continue
-                    }
-                    markers.insert(marker)
+                for worktree in try repository.registeredWorktrees() {
+                    try Task.checkCancellation()
+                    guard let scope = Self.worktreeScope(for: worktree, configuration: configuration),
+                          let linked = GitRepository.at(worktree),
+                          linked.commonDirectory.path == repository.commonDirectory.path else { continue }
+                    guard walkedWorktrees.insert(worktree.path).inserted else { continue }
+                    if configuration.explicitRoots.contains(where: {
+                        PathSafety.contains(worktree, in: $0)
+                            && !Self.containsDependencyOrCacheComponent(worktree, relativeTo: $0)
+                    }) { continue } // Already covered by the complete explicit walk.
+                    let discovery = try walkMarkers(in: worktree, scopeRoot: scope)
+                    markers.formUnion(discovery.markers)
+                    pending.append(contentsOf: discovery.repositoryRoots)
+                    errorsSkipped += discovery.errorsSkipped
                 }
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 errorsSkipped += 1
             }
-
-            let fallback = try walkMarkers(in: root)
-            markers.formUnion(fallback.markers)
-            errorsSkipped += fallback.errorsSkipped
         }
 
         return ProjectDiscovery(
@@ -154,6 +179,15 @@ struct ProjectLocator: Sendable {
             },
             errorsSkipped: errorsSkipped
         )
+    }
+
+    static func worktreeScope(for url: URL, configuration: ScanConfiguration) -> URL? {
+        if let root = configuration.explicitRoots.first(where: { PathSafety.contains(url, in: $0) }),
+           !containsDependencyOrCacheComponent(url, relativeTo: root) { return root }
+        if let home = configuration.automaticDiscoveryRoot,
+           url.standardizedFileURL.path != home.standardizedFileURL.path,
+           !isAutomaticallyExcluded(url, home: home) { return home }
+        return nil
     }
 
     static func isAutomaticallyExcluded(
@@ -194,32 +228,24 @@ struct ProjectLocator: Sendable {
         return relative.contains { excludedComponents.contains($0) }
     }
 
-    private func spotlightPaths(in root: URL) throws -> [String] {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        process.arguments = ["-0", "-onlyin", root.path, Self.query]
-        process.standardOutput = output
-        process.standardError = Pipe()
-
-        try process.run()
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        try Task.checkCancellation()
-
-        guard process.terminationStatus == 0 else {
-            throw CocoaError(.fileReadUnknown)
-        }
+    private static func spotlightPaths(in root: URL) throws -> [String] {
+        let data = try ScanProcess.output(executable: "/usr/bin/mdfind", arguments: ["-0", "-onlyin", root.path, Self.query])
 
         return data.split(separator: 0).compactMap {
             String(data: Data($0), encoding: .utf8)
         }
     }
 
-    private func walkMarkers(in root: URL) throws -> ProjectDiscovery {
+    private func walkMarkers(in root: URL, scopeRoot: URL? = nil) throws -> ProjectDiscovery {
+        try Task.checkCancellation()
+        guard PathSafety.isDirectory(root) else { return ProjectDiscovery(markers: [], errorsSkipped: 1) }
         let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
         var markers = Set<ProjectMarker>()
         var errorsSkipped = 0
+        var repositories: [URL] = [root]
+        if let repository = GitRepository.at(root), repository.directory.path == root.standardizedFileURL.path {
+            return ProjectDiscovery(markers: [], errorsSkipped: 0, repositoryRoots: [root])
+        }
 
         guard let enumerator = FileManager.default.enumerator(
             at: root,
@@ -251,13 +277,24 @@ struct ProjectLocator: Sendable {
 
                 if values.isDirectory == true,
                    Self.excludedComponents.contains(url.lastPathComponent) {
+                    if url.lastPathComponent == ".git" { repositories.append(url.deletingLastPathComponent()) }
                     enumerator.skipDescendants()
                     continue
                 }
 
-                if values.isRegularFile == true,
-                   let marker = marker(for: url, scopeRoot: root) {
-                    markers.insert(marker)
+                if values.isDirectory == true,
+                   FileManager.default.fileExists(atPath: url.appendingPathComponent("HEAD").path),
+                   let repository = GitRepository.at(url), repository.directory.path == url.standardizedFileURL.path {
+                    repositories.append(url)
+                    enumerator.skipDescendants()
+                    continue
+                }
+
+                if values.isRegularFile == true {
+                    if url.lastPathComponent == ".git" || url.lastPathComponent == "HEAD" {
+                        repositories.append(url.deletingLastPathComponent())
+                    }
+                    markers.formUnion(projectMarkers(for: url, scopeRoot: scopeRoot ?? root))
                 }
             } catch {
                 errorsSkipped += 1
@@ -266,22 +303,26 @@ struct ProjectLocator: Sendable {
 
         return ProjectDiscovery(
             markers: Array(markers),
-            errorsSkipped: errorsSkipped
+            errorsSkipped: errorsSkipped,
+            repositoryRoots: repositories
         )
     }
 
-    private func marker(for url: URL, scopeRoot: URL) -> ProjectMarker? {
-        let kind: ArtifactKind
+    private func projectMarkers(for url: URL, scopeRoot: URL) -> Set<ProjectMarker> {
+        guard ["Cargo.toml", "package.json", "Package.swift"].contains(url.lastPathComponent)
+                || Self.artifactKind(for: url) != nil else { return [] }
+        guard PathSafety.contains(url, in: scopeRoot), !PathSafety.hasSymbolicLink(in: url) else { return [] }
+        let kinds: [ArtifactKind]
         let artifactURL: URL?
         switch url.lastPathComponent {
         case "Cargo.toml":
-            kind = .rustTarget
+            kinds = [.rustTarget]
             artifactURL = nil
         case "package.json":
-            kind = .nodeModules
+            kinds = [.nodeModules, .nextBuild]
             artifactURL = nil
         case "Package.swift":
-            kind = .swiftBuild
+            kinds = [.swiftBuild]
             artifactURL = nil
         default:
             guard let artifactKind = Self.artifactKind(for: url),
@@ -291,24 +332,26 @@ struct ProjectLocator: Sendable {
                       at: url.deletingLastPathComponent().appendingPathComponent(markerName)
                   )
             else {
-                return nil
+                return []
             }
-            kind = artifactKind
+            kinds = [artifactKind]
             artifactURL = url.standardizedFileURL
         }
 
         if artifactURL == nil {
             guard Self.isRegularFileAndNotSymbolicLink(at: url) else {
-                return nil
+                return []
             }
         }
 
-        return ProjectMarker(
-            projectURL: url.deletingLastPathComponent().standardizedFileURL,
-            kind: kind,
-            scopeRoot: scopeRoot.standardizedFileURL,
-            artifactURL: artifactURL
-        )
+        return Set(kinds.map {
+            ProjectMarker(
+                projectURL: url.deletingLastPathComponent().standardizedFileURL,
+                kind: $0,
+                scopeRoot: scopeRoot.standardizedFileURL,
+                artifactURL: artifactURL
+            )
+        })
     }
 
     private static func artifactKind(for url: URL) -> ArtifactKind? {
@@ -349,7 +392,7 @@ struct ProjectLocator: Sendable {
         let rootValues = try root.resourceValues(
             forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
         )
-        guard rootValues.isDirectory == true,
+        guard !PathSafety.hasSymbolicLink(in: root), rootValues.isDirectory == true,
               rootValues.isSymbolicLink != true
         else {
             return []

@@ -37,7 +37,7 @@ struct ReclaimView: View {
             switch filter {
             case .all: true
             case .rust: artifact.kind == .rustTarget
-            case .node: artifact.kind == .nodeModules
+            case .node: artifact.kind == .nodeModules || artifact.kind == .nextBuild
             case .apple:
                 artifact.kind == .xcodeDerivedData || artifact.kind == .swiftBuild
             }
@@ -186,9 +186,7 @@ struct ReclaimView: View {
                 .tint(DiskSiftTheme.rust)
                 .disabled(
                     model.selectedArtifactIDs.isEmpty
-                        || !model.reclaimingArtifactIDs.isDisjoint(
-                            with: model.selectedArtifactIDs
-                        )
+                        || model.isScanning || !model.reclaimingArtifactIDs.isEmpty
                 )
                 .keyboardShortcut(.delete, modifiers: [.command])
             }

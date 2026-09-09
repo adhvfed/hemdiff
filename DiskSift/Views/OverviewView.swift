@@ -95,7 +95,8 @@ struct OverviewView: View {
                         StorageRail(
                             volume: volume,
                             rustBytes: model.snapshot.bytes(for: .rustTarget),
-                            nodeBytes: model.snapshot.bytes(for: .nodeModules),
+                            nodeBytes: model.snapshot.bytes(for: .nodeModules)
+                                + model.snapshot.bytes(for: .nextBuild),
                             appleBytes: developerArtifactBytes
                         )
 

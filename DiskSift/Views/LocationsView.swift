@@ -10,7 +10,7 @@ struct LocationsView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Scan locations")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
-                    Text("Projects are discovered from the macOS index; known Xcode storage is checked directly. Added folders get a low-priority check.")
+                    Text("Projects are discovered from the macOS index and Git worktree registrations. Added folders and known Xcode storage are checked directly.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -86,7 +86,7 @@ struct LocationsView: View {
                             policyRow(
                                 icon: "magnifyingglass",
                                 title: "Indexed discovery",
-                                detail: "DiskSift asks the existing macOS index where project markers live instead of crawling your home folder."
+                                detail: "DiskSift uses the macOS index and checks registered Git worktrees directly, including hidden checkouts. Privacy-managed locations still require an added folder."
                             )
                             Divider()
                             policyRow(

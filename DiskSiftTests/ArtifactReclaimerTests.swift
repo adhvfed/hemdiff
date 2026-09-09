@@ -3,6 +3,27 @@ import XCTest
 @testable import DiskSift
 
 final class ArtifactReclaimerTests: XCTestCase {
+    func testValidationRejectsSymlinkAncestorEvenWhenArtifactIdentityMatches() throws {
+        let fixture = FileManager.default.temporaryDirectory.appendingPathComponent("DiskSiftAncestor-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: fixture) }
+        let project = fixture.appendingPathComponent("original/parent/project")
+        let target = project.appendingPathComponent("target")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try Data("[workspace]".utf8).write(to: project.appendingPathComponent("Cargo.toml"))
+        let artifact = Artifact(kind: .rustTarget, path: target.path, projectPath: project.path,
+                                allocatedBytes: 0, createdAt: nil, modifiedAt: nil,
+                                fileIdentity: try ArtifactFileIdentity.capture(at: target))
+        let original = fixture.appendingPathComponent("original")
+        let moved = fixture.appendingPathComponent("moved")
+        try FileManager.default.moveItem(at: original, to: moved)
+        try FileManager.default.createSymbolicLink(at: original, withDestinationURL: moved)
+        XCTAssertEqual(try ArtifactFileIdentity.capture(at: target), artifact.fileIdentity)
+        XCTAssertThrowsError(try ArtifactReclaimer().validate(artifact)) {
+            XCTAssertEqual($0 as? ReclaimValidationError, .symbolicLink)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: moved.appendingPathComponent("parent/project/target").path))
+    }
+
     func testValidationAcceptsXcodeDerivedDataChildInKnownContainer() throws {
         let fixture = FileManager.default.temporaryDirectory
             .appendingPathComponent("DiskSiftReclaim-\(UUID().uuidString)", isDirectory: true)
