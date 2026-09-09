@@ -13,6 +13,8 @@ enum ScanProcess {
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
+        let terminated = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in terminated.signal() }
         try process.run()
         let buffer = OutputBuffer()
         let reader = DispatchGroup()
@@ -25,15 +27,15 @@ enum ScanProcess {
                 buffer.append(chunk)
             }
         }
-        while process.isRunning {
+        // Wake immediately on exit; the timeout only bounds cancellation latency.
+        while terminated.wait(timeout: .now() + .milliseconds(20)) == .timedOut {
             if Task.isCancelled {
                 // These are read-only system commands with no state to flush.
-                kill(process.processIdentifier, SIGKILL)
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
                 process.waitUntilExit()
                 reader.wait()
                 throw CancellationError()
             }
-            Thread.sleep(forTimeInterval: 0.02)
         }
         process.waitUntilExit()
         reader.wait()
