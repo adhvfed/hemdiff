@@ -1,0 +1,10 @@
+# @meaning HemDif single-color silhouette for menu bars and small UI
+# Shares the primary geometry; union avoids antialiasing seams between surfaces.
+documentsize 100x100
+use "./fold.strok" as fold
+boolean silhouette op=union
+  place upper shape=fold.upper-tail at=0,0
+  place lower shape=fold.lower-tail at=0,0
+  place front shape=fold.ribbon at=0,0
+  fill currentColor
+  stroke none

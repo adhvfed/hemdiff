@@ -1,0 +1,46 @@
+# @meaning HemDif folded ribbon H — primary brand mark
+# @tags hemdif, logo, fold, ribbon, space
+# Three editable surfaces. Coordinates are in the 100-unit document space.
+# Controls describe the incoming segment. Place without size to preserve coordinates.
+documentsize 100x100
+
+shape upper-tail template=path
+  addpoint top at=29,12
+  addpoint shoulder at=40,23 mode=controls c1=35.075,12 c2=40,16.925
+  addpoint inner at=40,54
+  addpoint bottom at=29,65 mode=controls c1=40,60.075 c2=35.075,65
+  addpoint outer at=18,54 mode=controls c1=22.925,65 c2=18,60.075
+  addpoint crown at=18,23
+  addpoint top-close at=29,12 mode=controls c1=18,16.925 c2=22.925,12
+  close
+  fill linear(top, bottom, #138F88, #064A4D)
+  stroke none
+
+shape lower-tail template=path
+  addpoint top at=71,35
+  addpoint shoulder at=82,46 mode=controls c1=77.075,35 c2=82,39.925
+  addpoint outer at=82,77
+  addpoint bottom at=71,88 mode=controls c1=82,83.075 c2=77.075,88
+  addpoint inner at=60,77 mode=controls c1=64.925,88 c2=60,83.075
+  addpoint crown at=60,46
+  addpoint top-close at=71,35 mode=controls c1=60,39.925 c2=64.925,35
+  close
+  fill linear(top, bottom, #05474A, #159D93)
+  stroke none
+
+shape ribbon template=path
+  addpoint left-fold at=18,43
+  addpoint fold-lip at=30,48 mode=controls c1=18,50 c2=23,52.2
+  addpoint rising-edge at=66,27
+  addpoint right-shoulder at=82,36 mode=controls c1=73,22.9 c2=82,27.5
+  addpoint right-fold at=82,57
+  addpoint under-lip at=70,52 mode=controls c1=82,50 c2=77,47.8
+  addpoint falling-edge at=34,73
+  addpoint left-shoulder at=18,64 mode=controls c1=27,77.1 c2=18,72.5
+  close
+  fill linear(bl, tr, #159D93, #64E5D3)
+  stroke none
+
+place upper shape=upper-tail at=0,0
+place lower shape=lower-tail at=0,0
+place front shape=ribbon at=0,0
