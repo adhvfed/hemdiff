@@ -3,6 +3,7 @@ import SwiftUI
 struct OverviewView: View {
     @EnvironmentObject private var model: AppModel
     let openReclaim: () -> Void
+    let openFiles: () -> Void
 
     var body: some View {
         ScrollView {
@@ -25,6 +26,20 @@ struct OverviewView: View {
                             .frame(maxWidth: .infinity, minHeight: 140)
                     }
                 }
+
+                Button(action: openFiles) {
+                    HStack {
+                        Label("Files", systemImage: "doc.on.doc")
+                        Spacer()
+                        Text("\(ByteText.string(model.snapshot.content.allocatedBytes)) in scan locations")
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.callout)
+                    .padding(16)
+                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
 
                 artifactSection
                 locationSection
@@ -187,7 +202,7 @@ private struct ScanProgressStrip: View {
             ProgressView()
                 .controlSize(.small)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(progress.artifactsFound) folders measured")
+                Text(progress.summary)
                     .font(.caption.weight(.medium))
                     .monospacedDigit()
                 Text(progress.currentPath)

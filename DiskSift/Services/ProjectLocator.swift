@@ -35,6 +35,7 @@ struct ProjectDiscovery: Sendable {
     let markers: [ProjectMarker]
     let errorsSkipped: Int
     var repositoryRoots: [URL] = []
+    var content = ContentInventory()
 }
 
 struct ProjectLocator: Sendable {
@@ -80,10 +81,14 @@ struct ProjectLocator: Sendable {
             .standardizedFileURL
     }
 
-    func locate(configuration: ScanConfiguration) throws -> ProjectDiscovery {
+    func locate(
+        configuration: ScanConfiguration,
+        progress: @escaping @Sendable (ScanProgress) -> Void = { _ in }
+    ) throws -> ProjectDiscovery {
         var markers = Set<ProjectMarker>()
         var errorsSkipped = 0
         var repositories = Set<URL>()
+        var content = ContentInventoryBuilder()
 
         if let automaticRoot = configuration.automaticDiscoveryRoot {
             do {
@@ -125,10 +130,16 @@ struct ProjectLocator: Sendable {
         for root in ArtifactScanner.normalizedRoots(configuration.explicitRoots) {
             try Task.checkCancellation()
 
-            let fallback = try walkMarkers(in: root)
+            // Explicit roots inside build output must not count those bytes again as personal files.
+            let buildComponents: Set<String> = ["target", "node_modules", ".next", ".build", "DerivedData", ".git"]
+            let classifiesContent = !root.standardizedFileURL.pathComponents.contains { buildComponents.contains($0) }
+            let fallback = try walkMarkers(
+                in: root, content: &content, classifiesContent: classifiesContent, progress: progress
+            )
             markers.formUnion(fallback.markers)
             repositories.formUnion(fallback.repositoryRoots)
             errorsSkipped += fallback.errorsSkipped
+            content.errorsSkipped += fallback.errorsSkipped
         }
 
         for marker in markers {
@@ -155,7 +166,8 @@ struct ProjectLocator: Sendable {
                         PathSafety.contains(worktree, in: $0)
                             && !Self.containsDependencyOrCacheComponent(worktree, relativeTo: $0)
                     }) { continue } // Already covered by the complete explicit walk.
-                    let discovery = try walkMarkers(in: worktree, scopeRoot: scope)
+                    var ignoredContent = ContentInventoryBuilder()
+                    let discovery = try walkMarkers(in: worktree, scopeRoot: scope, content: &ignoredContent, classifiesContent: false)
                     markers.formUnion(discovery.markers)
                     pending.append(contentsOf: discovery.repositoryRoots)
                     errorsSkipped += discovery.errorsSkipped
@@ -177,7 +189,8 @@ struct ProjectLocator: Sendable {
                 }
                 return $0.projectURL.path < $1.projectURL.path
             },
-            errorsSkipped: errorsSkipped
+            errorsSkipped: errorsSkipped,
+            content: content.inventory
         )
     }
 
@@ -236,15 +249,31 @@ struct ProjectLocator: Sendable {
         }
     }
 
-    private func walkMarkers(in root: URL, scopeRoot: URL? = nil) throws -> ProjectDiscovery {
+    private func walkMarkers(
+        in root: URL, scopeRoot: URL? = nil,
+        content: inout ContentInventoryBuilder, classifiesContent: Bool = true,
+        progress: @escaping @Sendable (ScanProgress) -> Void = { _ in }
+    ) throws -> ProjectDiscovery {
         try Task.checkCancellation()
         guard PathSafety.isDirectory(root) else { return ProjectDiscovery(markers: [], errorsSkipped: 1) }
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isPackageKey]
+            + (classifiesContent ? [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .contentModificationDateKey] : [])
         var markers = Set<ProjectMarker>()
         var errorsSkipped = 0
         var repositories: [URL] = [root]
         if let repository = GitRepository.at(root), repository.directory.path == root.standardizedFileURL.path {
             return ProjectDiscovery(markers: [], errorsSkipped: 0, repositoryRoots: [root])
+        }
+
+        if classifiesContent {
+            do {
+                let values = try root.resourceValues(forKeys: Set(keys))
+                if values.isPackage == true || ContentKind.classify(root, isDirectory: true) != .other {
+                    try recordContent(root, values: values, content: &content)
+                    return ProjectDiscovery(markers: [], errorsSkipped: 0)
+                }
+            } catch is CancellationError { throw CancellationError() }
+            catch { return ProjectDiscovery(markers: [], errorsSkipped: 1) }
         }
 
         guard let enumerator = FileManager.default.enumerator(
@@ -260,10 +289,19 @@ struct ProjectLocator: Sendable {
         }
 
         var visited = 0
+        var lastProgress = Date.distantPast
         while let url = enumerator.nextObject() as? URL {
             visited += 1
             if visited % 256 == 0 {
                 try Task.checkCancellation()
+                if classifiesContent, Date().timeIntervalSince(lastProgress) >= 0.25 {
+                    lastProgress = Date()
+                    let inventory = content.inventory
+                    progress(ScanProgress(
+                        currentPath: url.path, entriesVisited: visited, artifactsFound: 0,
+                        bytesMeasured: inventory.allocatedBytes, filesClassified: inventory.count
+                    ))
+                }
             }
 
             do {
@@ -290,12 +328,25 @@ struct ProjectLocator: Sendable {
                     continue
                 }
 
+                if classifiesContent,
+                   values.isRegularFile == true || values.isPackage == true
+                    || (values.isDirectory == true && ContentKind.classify(url, isDirectory: true) != .other) {
+                    if values.isDirectory == true { enumerator.skipDescendants() }
+                    if url.lastPathComponent != ".git" {
+                        do { try recordContent(url, values: values, content: &content) }
+                        catch is CancellationError { throw CancellationError() }
+                        catch { content.errorsSkipped += 1 }
+                    }
+                }
+
                 if values.isRegularFile == true {
                     if url.lastPathComponent == ".git" || url.lastPathComponent == "HEAD" {
                         repositories.append(url.deletingLastPathComponent())
                     }
                     markers.formUnion(projectMarkers(for: url, scopeRoot: scopeRoot ?? root))
                 }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 errorsSkipped += 1
             }
@@ -306,6 +357,30 @@ struct ProjectLocator: Sendable {
             errorsSkipped: errorsSkipped,
             repositoryRoots: repositories
         )
+    }
+
+    private func recordContent(
+        _ url: URL, values: URLResourceValues, content: inout ContentInventoryBuilder
+    ) throws {
+        try Task.checkCancellation()
+        let isDirectory = values.isDirectory == true
+        let bytes: Int64
+        if isDirectory {
+            guard !PathSafety.hasSymbolicLink(in: url) else { return }
+            bytes = try ArtifactScanner.measureDirectory(url).bytes
+        } else {
+            guard let size = values.totalFileAllocatedSize ?? values.fileAllocatedSize, size >= 0 else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            bytes = Int64(size)
+        }
+        content.record(ContentItem(
+            path: url.standardizedFileURL.path,
+            kind: ContentKind.classify(url, isDirectory: isDirectory),
+            allocatedBytes: bytes,
+            modifiedAt: values.contentModificationDate,
+            isPackage: isDirectory
+        ))
     }
 
     private func projectMarkers(for url: URL, scopeRoot: URL) -> Set<ProjectMarker> {

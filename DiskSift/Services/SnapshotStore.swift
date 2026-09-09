@@ -20,9 +20,9 @@ struct SnapshotStore: Sendable {
     func load() throws -> DiskSnapshot? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
         let data = try Data(contentsOf: fileURL)
-        let snapshot = try JSONDecoder.diskSift.decode(DiskSnapshot.self, from: data)
-        guard snapshot.schemaVersion == DiskSnapshot.currentSchemaVersion else { return nil }
-        return snapshot
+        let version = try JSONDecoder().decode(SnapshotVersion.self, from: data)
+        guard version.schemaVersion == DiskSnapshot.currentSchemaVersion else { return nil }
+        return try JSONDecoder.diskSift.decode(DiskSnapshot.self, from: data)
     }
 
     func save(_ snapshot: DiskSnapshot) throws {
@@ -33,6 +33,10 @@ struct SnapshotStore: Sendable {
         let data = try JSONEncoder.diskSift.encode(snapshot)
         try data.write(to: fileURL, options: [.atomic])
     }
+}
+
+private struct SnapshotVersion: Decodable {
+    let schemaVersion: Int
 }
 
 private extension JSONEncoder {

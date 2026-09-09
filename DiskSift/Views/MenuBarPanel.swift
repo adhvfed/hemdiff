@@ -106,7 +106,7 @@ struct MenuBarPanel: View {
 
     private var statusText: String {
         if model.isScanning, let progress = model.scanProgress {
-            return "Scanning · \(progress.artifactsFound) folders"
+            return progress.summary
         }
         guard model.snapshot.finishedAt != .distantPast else {
             return "Not scanned yet"

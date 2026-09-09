@@ -66,7 +66,7 @@ struct LocationsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 14)
 
-                        Text("Missing a project? Add its folder here.")
+                        Text("Add folders to classify their files, including Downloads, Movies, or Documents.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -81,7 +81,8 @@ struct LocationsView: View {
                         Panel {
                             HStack(spacing: 28) {
                                 diagnostic("Duration", value: scanDuration)
-                                diagnostic("Folders", value: model.snapshot.artifacts.count.formatted())
+                                diagnostic("Build folders", value: model.snapshot.artifacts.count.formatted())
+                                diagnostic("Files", value: model.snapshot.content.count.formatted())
                                 diagnostic("Skipped", value: model.snapshot.errorsSkipped.formatted())
                                 Spacer()
                             }
@@ -99,7 +100,7 @@ struct LocationsView: View {
                     if model.isScanning, let progress = model.scanProgress {
                         ProgressView()
                             .controlSize(.small)
-                        Text("\(progress.artifactsFound) folders measured")
+                        Text(progress.summary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

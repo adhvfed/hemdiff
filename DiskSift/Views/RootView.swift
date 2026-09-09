@@ -3,6 +3,7 @@ import SwiftUI
 enum AppDestination: String, CaseIterable, Identifiable {
     case overview
     case reclaim
+    case files
     case locations
 
     var id: String { rawValue }
@@ -11,6 +12,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
         switch self {
         case .overview: "Storage"
         case .reclaim: "Cleanup"
+        case .files: "Files"
         case .locations: "Scan Locations"
         }
     }
@@ -19,6 +21,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
         switch self {
         case .overview: "chart.bar.xaxis"
         case .reclaim: "trash"
+        case .files: "doc.on.doc"
         case .locations: "folder.badge.gearshape"
         }
     }
@@ -44,9 +47,11 @@ struct RootView: View {
             Group {
                 switch destination ?? .overview {
                 case .overview:
-                    OverviewView(openReclaim: { destination = .reclaim })
+                    OverviewView(openReclaim: { destination = .reclaim }, openFiles: { destination = .files })
                 case .reclaim:
                     ReclaimView()
+                case .files:
+                    FilesView(openLocations: { destination = .locations })
                 case .locations:
                     LocationsView()
                 }
@@ -79,7 +84,7 @@ private struct SidebarStatus: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             if let progress = model.scanProgress {
-                Text("Scanning · \(progress.artifactsFound) folders")
+                Text(progress.summary)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()

@@ -114,8 +114,8 @@ struct ScannedCategory: Identifiable, Codable, Hashable, Sendable {
 }
 
 struct DiskSnapshot: Codable, Equatable, Sendable {
-    // Registered worktrees and stricter path validation change the inventory.
-    static let currentSchemaVersion = 8
+    // Includes classified content from explicit scan locations.
+    static let currentSchemaVersion = 9
 
     let schemaVersion: Int
     let roots: [String]
@@ -126,6 +126,7 @@ struct DiskSnapshot: Codable, Equatable, Sendable {
     let errorsSkipped: Int
     var categories: [ScannedCategory]
     var artifacts: [Artifact]
+    var content = ContentInventory()
 
     static var empty: DiskSnapshot {
         DiskSnapshot(
@@ -194,6 +195,11 @@ struct ScanProgress: Equatable, Sendable {
     let entriesVisited: Int
     let artifactsFound: Int
     let bytesMeasured: Int64
+    var filesClassified: Int = 0
+
+    var summary: String {
+        filesClassified > 0 ? "\(filesClassified.formatted()) items classified" : "\(artifactsFound) folders measured"
+    }
 }
 
 struct ReclaimResult: Sendable {

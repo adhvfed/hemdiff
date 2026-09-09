@@ -9,11 +9,12 @@ struct ArtifactScanner: Sendable {
     ) async throws -> DiskSnapshot {
         let work = Task.detached(priority: .utility) {
             let startedAt = Date()
-            let discovery = try locator.locate(configuration: configuration)
+            let reporter = ScanProgressReporter(progress)
+            let discovery = try locator.locate(configuration: configuration, progress: { reporter.send($0) })
             return try Self.measure(
                 discovery: discovery,
                 configuration: configuration,
-                progress: progress,
+                progress: { reporter.send($0) },
                 startedAt: startedAt
             )
         }
@@ -182,7 +183,8 @@ struct ArtifactScanner: Sendable {
             directoriesVisited: directoriesVisited,
             errorsSkipped: errorsSkipped,
             categories: categories,
-            artifacts: artifacts.sorted { $0.allocatedBytes > $1.allocatedBytes }
+            artifacts: artifacts.sorted { $0.allocatedBytes > $1.allocatedBytes },
+            content: discovery.content
         )
     }
 
@@ -192,7 +194,7 @@ struct ArtifactScanner: Sendable {
         return repository.root.lastPathComponent
     }
 
-    private static func measureDirectory(_ url: URL) throws -> (
+    static func measureDirectory(_ url: URL) throws -> (
         bytes: Int64,
         files: Int,
         directories: Int,
@@ -231,5 +233,23 @@ struct ArtifactScanner: Sendable {
         let first = relative.first ?? root.lastPathComponent
         let categoryURL = root.appendingPathComponent(first)
         return (categoryURL.path, first, categoryURL.path)
+    }
+}
+
+/// One publication budget across discovery, scan roots, and artifact measurement.
+private final class ScanProgressReporter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastPublication = -Double.infinity
+    private let receive: @Sendable (ScanProgress) -> Void
+
+    init(_ receive: @escaping @Sendable (ScanProgress) -> Void) { self.receive = receive }
+
+    func send(_ progress: ScanProgress) {
+        lock.lock()
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastPublication >= 0.25 else { lock.unlock(); return }
+        lastPublication = now
+        lock.unlock()
+        receive(progress)
     }
 }

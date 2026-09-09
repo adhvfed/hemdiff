@@ -18,6 +18,16 @@ Privacy-managed folders, tool caches, and locations outside your home remain
 excluded unless you add an appropriate scan location. Unindexed repositories
 with no discovered connection still need an added folder.
 
+The **Files** view classifies content in your scan locations: video, audio,
+images, documents, archives, disk images and installers, virtual machines, AI
+models, databases and datasets, code, applications, and other files. Add folders
+such as Downloads or Movies in **Scan Locations** to include them.
+
+Category totals include all measured items. Browse the largest 100 per type,
+filter by name or path, sort by size, name, or modification date, and use **Show
+in Finder** to move or remove personal files. App bundles, photo libraries, and
+VM packages appear as single items. Build folders remain in **Cleanup**.
+
 ## Build
 
 ```sh

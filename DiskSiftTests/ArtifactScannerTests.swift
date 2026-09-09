@@ -16,6 +16,7 @@ final class ArtifactScannerTests: XCTestCase {
             automaticDiscoveryRoot: fixture.url, explicitRoots: [parent.deletingLastPathComponent()]
         ))
         XCTAssertEqual(snapshot.artifacts.map(\.kind), [.nodeModules])
+        XCTAssertEqual(snapshot.content.count, 0)
         XCTAssertGreaterThan(snapshot.artifactBytes, 0)
     }
 
