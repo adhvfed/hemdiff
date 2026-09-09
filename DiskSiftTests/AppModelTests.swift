@@ -86,6 +86,18 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(image.size.height, 22)
         XCTAssertTrue(image.isTemplate)
         XCTAssertNotNil(image.tiffRepresentation)
+        let bitmaps = image.representations.compactMap { $0 as? NSBitmapImageRep }
+        XCTAssertEqual(Set(bitmaps.map(\.pixelsWide)), [22, 44])
+        for bitmap in bitmaps {
+            var visible = 0
+            for y in 0..<bitmap.pixelsHigh {
+                for x in 0..<bitmap.pixelsWide {
+                    if (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.1 { visible += 1 }
+                }
+            }
+            XCTAssertGreaterThan(visible, 20, "The menu glyph must contain visible pixels.")
+            XCTAssertLessThan(visible, bitmap.pixelsWide * bitmap.pixelsHigh, "The template needs a transparent background.")
+        }
     }
 
     private func waitForScan(_ model: AppModel) async throws {

@@ -31,11 +31,14 @@ struct TrashView: View {
                     Image(systemName: "lock.shield").font(.title2).foregroundStyle(.orange)
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Trash access is restricted").font(.headline)
-                        Text("Allow Hemdiff in System Settings → Privacy & Security → Full Disk Access, then reopen the app. The estimate includes only accessible items.")
+                        Text("Add Hemdiff in Full Disk Access, enable it, then reopen the app.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Open Full Disk Access") { SystemSettings.openFullDiskAccess() }
+                    VStack(alignment: .trailing, spacing: 8) {
+                        Button("Open Full Disk Access") { SystemSettings.openFullDiskAccess() }
+                        Button("Show App in Finder") { SystemSettings.revealApplication() }
+                    }
                 }.padding(18).background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
             }
             if model.isLoadingTrash {

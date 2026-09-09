@@ -2,6 +2,10 @@ import AppKit
 
 @MainActor
 enum SystemSettings {
+    static func revealApplication() {
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+    }
+
     // Apple Developer Forums: https://developer.apple.com/forums/thread/791996
     static func openFullDiskAccess() {
         for address in [
