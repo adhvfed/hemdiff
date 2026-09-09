@@ -13,6 +13,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var scanRoots: [URL]
     @Published private(set) var reclaimingArtifactIDs = Set<Artifact.ID>()
 
+    @Published private(set) var trashSnapshot = TrashSnapshot()
+    @Published private(set) var isLoadingTrash = false
+    @Published private(set) var isManagingFiles = false
+    @Published private(set) var contentRevision = 0
+    private let fileOperations: FileOperations
+    var isBusy: Bool { isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
+
     private let scanner: ArtifactScanner
     private let volumeMonitor: VolumeMonitor
     private let snapshotStore: SnapshotStore
@@ -31,6 +38,7 @@ final class AppModel: ObservableObject {
         volumeMonitor: VolumeMonitor = VolumeMonitor(),
         snapshotStore: SnapshotStore = SnapshotStore(),
         reclaimer: ArtifactReclaimer = ArtifactReclaimer(),
+        fileOperations: FileOperations = FileOperations(),
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         defaults: UserDefaults = .standard,
         startsAutomatically: Bool = true
@@ -39,6 +47,7 @@ final class AppModel: ObservableObject {
         self.volumeMonitor = volumeMonitor
         self.snapshotStore = snapshotStore
         self.reclaimer = reclaimer
+        self.fileOperations = fileOperations
         self.homeDirectory = homeDirectory.standardizedFileURL
         self.defaults = defaults
         snapshot = (try? snapshotStore.load()) ?? .empty
@@ -71,6 +80,7 @@ final class AppModel: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
+            await self.refreshTrash()
             if self.snapshot.finishedAt == .distantPast || self.isSnapshotStale {
                 self.startScan()
             }
@@ -106,7 +116,7 @@ final class AppModel: ObservableObject {
     }
 
     func startScan() {
-        guard !isScanning, reclaimingArtifactIDs.isEmpty else { return }
+        guard !isBusy else { return }
         scanGeneration = UUID()
         isScanning = true
         scanProgress = ScanProgress(
@@ -135,11 +145,16 @@ final class AppModel: ObservableObject {
                     progressRelay.send(progress)
                 }
                 guard let self, !Task.isCancelled else { return }
+                let previousIndex = self.snapshot.content.indexPath
                 self.snapshot = completed
+                self.contentRevision += 1
                 self.selectedArtifactIDs.formIntersection(Set(completed.artifacts.map(\.id)))
                 self.refreshVolume()
                 do {
                     try store.save(completed)
+                    if let previousIndex, previousIndex != completed.content.indexPath {
+                        Self.removeManagedIndex(previousIndex)
+                    }
                 } catch {
                     self.errorMessage = "Couldn’t save scan results."
                 }
@@ -188,7 +203,7 @@ final class AppModel: ObservableObject {
 
     private func reclaim(_ artifacts: [Artifact]) async {
         guard !artifacts.isEmpty else { return }
-        guard !isScanning, reclaimingArtifactIDs.isEmpty else {
+        guard !isBusy else {
             errorMessage = "Wait for the scan or cleanup to finish."
             return
         }
@@ -216,6 +231,68 @@ final class AppModel: ObservableObject {
             let details = result.failures.values.prefix(2).joined(separator: " ")
             errorMessage = "\(result.failures.count) folder\(result.failures.count == 1 ? "" : "s") could not be deleted. \(details)"
         }
+    }
+
+    func refreshTrash() async {
+        guard !isLoadingTrash, !isManagingFiles else { return }
+        isLoadingTrash = true
+        defer { isLoadingTrash = false }
+        trashSnapshot = await fileOperations.measureTrash()
+    }
+
+    func trashFiles(_ items: [ContentItem]) async -> Set<String> {
+        guard !isBusy, !items.isEmpty else { return [] }
+        isManagingFiles = true
+        defer { isManagingFiles = false }
+        errorMessage = nil
+        noticeMessage = nil
+        let result = await fileOperations.moveToTrash(items, allowedRoots: scanRoots)
+        if let path = snapshot.content.indexPath, !result.succeeded.isEmpty {
+            do {
+                snapshot.content = try await Task.detached(priority: .utility) {
+                    let index = try ContentIndex(path: path)
+                    try index.remove(paths: result.succeeded.map(\.path))
+                    return try index.inventory()
+                }.value
+                try snapshotStore.save(snapshot)
+            } catch { errorMessage = "Files moved, but the inventory couldn’t be updated. Scan again." }
+        }
+        contentRevision += 1
+        if !result.succeeded.isEmpty {
+            noticeMessage = "Moved \(result.succeeded.count) items to Trash. Empty Trash to recover space."
+        }
+        reportFileFailures(result)
+        trashSnapshot = await fileOperations.measureTrash()
+        refreshVolume()
+        return Set(result.succeeded.map(\.path))
+    }
+
+    func deleteTrashItems(_ items: [ContentItem]) async -> Set<String> {
+        guard !isBusy, !isLoadingTrash, !items.isEmpty else { return [] }
+        isManagingFiles = true
+        defer { isManagingFiles = false }
+        errorMessage = nil
+        noticeMessage = nil
+        let result = await fileOperations.deleteFromTrash(items, roots: trashSnapshot.roots)
+        if !result.succeeded.isEmpty { noticeMessage = "Permanently deleted \(result.succeeded.count) items from Trash." }
+        reportFileFailures(result)
+        trashSnapshot = await fileOperations.measureTrash()
+        refreshVolume()
+        return Set(result.succeeded.map(\.path))
+    }
+
+    private func reportFileFailures(_ result: FileOperationResult) {
+        if !result.failures.isEmpty {
+            errorMessage = "\(result.failures.count) items couldn’t be changed. " + result.failures.values.prefix(2).joined(separator: " ")
+        }
+    }
+
+    private static func removeManagedIndex(_ path: String) {
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("DiskSift/Indexes").standardizedFileURL
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        guard url.deletingLastPathComponent() == directory, url.pathExtension == "sqlite" else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     func addScanRoot(_ url: URL) {

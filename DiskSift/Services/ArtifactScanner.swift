@@ -10,13 +10,21 @@ struct ArtifactScanner: Sendable {
         let work = Task.detached(priority: .utility) {
             let startedAt = Date()
             let reporter = ScanProgressReporter(progress)
-            let discovery = try locator.locate(configuration: configuration, progress: { reporter.send($0) })
-            return try Self.measure(
+            let index = try ContentIndex.temporary()
+            var published = false
+            defer { if !published { index.discard() } }
+            let discovery = try locator.locate(configuration: configuration, contentIndex: index, progress: { reporter.send($0) })
+            var result = try Self.measure(
                 discovery: discovery,
                 configuration: configuration,
                 progress: { reporter.send($0) },
                 startedAt: startedAt
             )
+            try index.finish()
+            try Task.checkCancellation()
+            result.content.indexPath = index.path
+            published = true
+            return result
         }
 
         return try await withTaskCancellationHandler {

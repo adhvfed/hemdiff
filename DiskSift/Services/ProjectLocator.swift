@@ -83,12 +83,13 @@ struct ProjectLocator: Sendable {
 
     func locate(
         configuration: ScanConfiguration,
+        contentIndex: ContentIndex? = nil,
         progress: @escaping @Sendable (ScanProgress) -> Void = { _ in }
     ) throws -> ProjectDiscovery {
         var markers = Set<ProjectMarker>()
         var errorsSkipped = 0
         var repositories = Set<URL>()
-        var content = ContentInventoryBuilder()
+        var content = ContentInventoryBuilder(index: contentIndex)
 
         if let automaticRoot = configuration.automaticDiscoveryRoot {
             do {
@@ -404,13 +405,16 @@ struct ProjectLocator: Sendable {
             }
             bytes = Int64(size)
         }
-        content.record(ContentItem(
+        let item = ContentItem(
             path: url.standardizedFileURL.path,
             kind: ContentKind.classify(url, isDirectory: isDirectory),
             allocatedBytes: bytes,
             modifiedAt: values.contentModificationDate,
-            isPackage: isDirectory
-        ))
+            isPackage: isDirectory,
+            stamp: try FileStamp.capture(url)
+        )
+        try content.index?.append(item)
+        content.record(item)
     }
 
     private func projectMarkers(for url: URL, scopeRoot: URL) -> Set<ProjectMarker> {

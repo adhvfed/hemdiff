@@ -159,7 +159,7 @@ struct ScannedCategory: Identifiable, Codable, Hashable, Sendable {
 
 struct DiskSnapshot: Codable, Equatable, Sendable {
     // Includes classified content from explicit scan locations.
-    static let currentSchemaVersion = 10
+    static let currentSchemaVersion = 11
 
     let schemaVersion: Int
     let roots: [String]

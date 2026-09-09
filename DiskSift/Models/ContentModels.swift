@@ -93,6 +93,7 @@ struct ContentItem: Codable, Hashable, Identifiable, Sendable {
     let allocatedBytes: Int64
     let modifiedAt: Date?
     let isPackage: Bool
+    var stamp: FileStamp? = nil
     var url: URL { URL(fileURLWithPath: path) }
 }
 
@@ -108,11 +109,14 @@ struct ContentInventory: Codable, Equatable, Sendable {
     static let itemLimitPerKind = 100
     var summaries: [ContentSummary] = []
     var errorsSkipped = 0
+    var indexPath: String? = nil
     var count: Int { summaries.reduce(0) { $0 + $1.count } }
     var allocatedBytes: Int64 { summaries.reduce(0) { $0 + $1.allocatedBytes } }
 }
 
 struct ContentInventoryBuilder {
+    var index: ContentIndex? = nil
+    init(index: ContentIndex? = nil) { self.index = index }
     private var summaries: [ContentKind: ContentSummary] = [:]
     var errorsSkipped = 0
 
