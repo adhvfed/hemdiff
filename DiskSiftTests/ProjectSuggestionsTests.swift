@@ -100,3 +100,60 @@ extension ProjectSuggestionsTests {
         XCTAssertEqual(stopped.suggestions.map { $0.url.path }, [project.path])
     }
 }
+
+extension ProjectSuggestionsTests {
+    func testWorkspaceInferenceUsesContentsAndPreservesMixedFolders() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("HemdiffFind-\(UUID().uuidString)").standardizedFileURL
+        defer { try? FileManager.default.removeItem(at: home) }
+        for folder in ["AutoProjects/first", "AutoProjects/second", "Mixed/first", "Mixed/second",
+                       "Projects/first", "Projects/second", "Clients/solo", "Other/first", "Other/second"] {
+            let repo = home.appendingPathComponent(folder)
+            try FileManager.default.createDirectory(at: repo.appendingPathComponent(".git/objects"), withIntermediateDirectories: true)
+            try Data("ref: refs/heads/main\n".utf8).write(to: repo.appendingPathComponent(".git/HEAD"))
+        }
+        try Data("Notes".utf8).write(to: home.appendingPathComponent("AutoProjects/README.md"))
+        try Data().write(to: home.appendingPathComponent("Mixed/taxes.pdf"))
+        try FileManager.default.createDirectory(at: home.appendingPathComponent("Projects/Photos"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: home.appendingPathComponent("Other/shortcut"), withDestinationURL: home.appendingPathComponent("AutoProjects"))
+        let result = try ProjectSuggestions(home: home, locator: ProjectLocator(indexedPaths: { _ in [] })).discover()
+        let workspace = try XCTUnwrap(result.suggestions.first { $0.url.lastPathComponent == "AutoProjects" })
+        XCTAssertEqual(workspace.projects, 2)
+        XCTAssertTrue(workspace.isWorkspace)
+        XCTAssertEqual(Set(workspace.projectURLs.map(\.lastPathComponent)), ["first", "second"])
+        for folder in ["Mixed", "Projects", "Other", "Clients"] {
+            XCTAssertFalse(result.suggestions.contains { $0.url.path == home.appendingPathComponent(folder).path }, folder)
+        }
+        XCTAssertTrue(result.suggestions.contains { $0.url.path == home.appendingPathComponent("Clients/solo").path })
+        XCTAssertFalse(result.suggestions.contains { $0.url.path == home.path })
+    }
+
+    func testParentOptionNeverOffersHomeOrProtectedFolders() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("HemdiffFind-\(UUID().uuidString)").standardizedFileURL
+        defer { try? FileManager.default.removeItem(at: home) }
+        for folder in ["Clients/solo", "Documents/private"] {
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
+        let finder = ProjectSuggestions(home: home)
+        XCTAssertEqual(finder.parentOption(for: home.appendingPathComponent("Clients/solo"))?.path, home.appendingPathComponent("Clients").path)
+        XCTAssertNil(finder.parentOption(for: home.appendingPathComponent("Clients")))
+        XCTAssertNil(finder.parentOption(for: home.appendingPathComponent("Documents/private")))
+    }
+}
+
+extension ProjectSuggestionsTests {
+    func testSingleProjectContainerNameAndGoCacheExclusion() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("HemdiffFind-\(UUID().uuidString)").standardizedFileURL
+        defer { try? FileManager.default.removeItem(at: home) }
+        for path in ["AutoProjects/fraktur", "go/pkg/mod/example.org/dependency@v1", "Work/mod"] {
+            let folder = home.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data().write(to: folder.appendingPathComponent("go.mod"))
+        }
+        let cacheMarker = home.appendingPathComponent("go/pkg/mod/example.org/dependency@v1/go.mod").path
+        let result = try ProjectSuggestions(home: home, locator: ProjectLocator(indexedPaths: { _ in [cacheMarker] })).discover()
+        XCTAssertEqual(Set(result.suggestions.map { $0.url.path }), [
+            home.appendingPathComponent("AutoProjects").path, home.appendingPathComponent("Work/mod").path
+        ])
+        XCTAssertTrue(result.suggestions.first { $0.url.lastPathComponent == "AutoProjects" }?.isWorkspace == true)
+    }
+}

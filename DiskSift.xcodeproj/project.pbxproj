@@ -42,6 +42,8 @@
 		AA12F76AAB710C6762400E0E /* FileOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 613DB89808CB2584FB359151 /* FileOperations.swift */; };
 		AFD324D5B27E495A09C5B8A8 /* ArtifactReclaimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 802FDFBCF5D3306F80BEF898 /* ArtifactReclaimerTests.swift */; };
 		B3CB8C3C8CB24E470703A715 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 171B9B50BC00FDF7B26B4437 /* RootView.swift */; };
+		BB6C06A7FF26A73321D4BB0B /* ProjectSuggestionSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A339126A0F51E4A47F869F6F /* ProjectSuggestionSelection.swift */; };
+		BD16EA0BFBE64F9548BBF578 /* ProjectSuggestionSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2154378CBB69224370014C43 /* ProjectSuggestionSelectionTests.swift */; };
 		C547F08A723417978EE1883C /* SetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A4C211DCE0D8C73A8712F56 /* SetupTests.swift */; };
 		CDD32EA7C1A07A5D7B100249 /* ProjectSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50017B0DB86D22AA4CE08F66 /* ProjectSuggestions.swift */; };
 		D50D2055714E75EF47B0B9AC /* PathSafety.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB49C6E5422704683A78B00F /* PathSafety.swift */; };
@@ -74,6 +76,7 @@
 		18F012DA0114BDD88AC00A52 /* ArtifactScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactScannerTests.swift; sourceTree = "<group>"; };
 		1923607C43ED579DD56D3B11 /* DiskSiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DiskSiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A4C211DCE0D8C73A8712F56 /* SetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupTests.swift; sourceTree = "<group>"; };
+		2154378CBB69224370014C43 /* ProjectSuggestionSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSuggestionSelectionTests.swift; sourceTree = "<group>"; };
 		34EA043F9976A3F70D351B58 /* SystemSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemSettings.swift; sourceTree = "<group>"; };
 		373FB5B8014253444628BABB /* FileReviewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileReviewModel.swift; sourceTree = "<group>"; };
 		433FE09B066DE4CE6FEE6C74 /* SnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStore.swift; sourceTree = "<group>"; };
@@ -98,6 +101,7 @@
 		9A4C096A02C0E81A933C571D /* ContentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentModels.swift; sourceTree = "<group>"; };
 		9C8AC13B034FC5393560317B /* ContentIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentIndex.swift; sourceTree = "<group>"; };
 		9C91A3B83243982BA3818E67 /* Hemdiff.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hemdiff.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A339126A0F51E4A47F869F6F /* ProjectSuggestionSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSuggestionSelection.swift; sourceTree = "<group>"; };
 		AEC2F631D232BC1E58EBBC7F /* StorageRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageRail.swift; sourceTree = "<group>"; };
 		BABE629CB9AF63A00D4CFA86 /* FileReviewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileReviewModelTests.swift; sourceTree = "<group>"; };
 		BB49C6E5422704683A78B00F /* PathSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathSafety.swift; sourceTree = "<group>"; };
@@ -170,6 +174,7 @@
 				BABE629CB9AF63A00D4CFA86 /* FileReviewModelTests.swift */,
 				BED88FB30A53D0D3A770BBFE /* GitWorktreeTests.swift */,
 				09567CF2717EE9D6E01B1478 /* ProjectLocatorTests.swift */,
+				2154378CBB69224370014C43 /* ProjectSuggestionSelectionTests.swift */,
 				94504497CC4F0206755583AE /* ProjectSuggestionsTests.swift */,
 				4CA0E4A675AD75787A15990B /* ScanProcessTests.swift */,
 				1A4C211DCE0D8C73A8712F56 /* SetupTests.swift */,
@@ -212,6 +217,7 @@
 			children = (
 				9A4C096A02C0E81A933C571D /* ContentModels.swift */,
 				02653E1EDC2C1E86E585DD3B /* DiskModels.swift */,
+				A339126A0F51E4A47F869F6F /* ProjectSuggestionSelection.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -335,6 +341,7 @@
 				38D82AD788FC7313E555598F /* FileReviewModelTests.swift in Sources */,
 				2489A82CAAFD38FC3B5FBCED /* GitWorktreeTests.swift in Sources */,
 				D76502E8DBCAB4C46CE4F8E1 /* ProjectLocatorTests.swift in Sources */,
+				BD16EA0BFBE64F9548BBF578 /* ProjectSuggestionSelectionTests.swift in Sources */,
 				30B70A0D6259E332A8AB3A32 /* ProjectSuggestionsTests.swift in Sources */,
 				E3FDDFB2D693173339D1BFDD /* ScanProcessTests.swift in Sources */,
 				C547F08A723417978EE1883C /* SetupTests.swift in Sources */,
@@ -366,6 +373,7 @@
 				5CED118A6B5316E4FFDF5543 /* OverviewView.swift in Sources */,
 				D50D2055714E75EF47B0B9AC /* PathSafety.swift in Sources */,
 				0A4D0DD31B0083515A09C5A7 /* ProjectLocator.swift in Sources */,
+				BB6C06A7FF26A73321D4BB0B /* ProjectSuggestionSelection.swift in Sources */,
 				CDD32EA7C1A07A5D7B100249 /* ProjectSuggestions.swift in Sources */,
 				8CDDB001132FCA3318C3C46F /* ReclaimView.swift in Sources */,
 				B3CB8C3C8CB24E470703A715 /* RootView.swift in Sources */,

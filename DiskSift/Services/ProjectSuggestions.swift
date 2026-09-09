@@ -3,8 +3,11 @@ import Foundation
 struct ProjectSuggestion: Identifiable, Sendable {
     var id: String { url.path }
     let url: URL
-    let projects: Int
-    let worktrees: Int
+    let projectURLs: [URL]
+    let worktreeURLs: [URL]
+    var projects: Int { projectURLs.count }
+    var worktrees: Int { worktreeURLs.count }
+    var isWorkspace: Bool { !projectURLs.contains { $0.path == url.path } }
 }
 
 struct ProjectSuggestionResult: Sendable {
@@ -15,6 +18,7 @@ struct ProjectSuggestionResult: Sendable {
 
 private enum ProjectSearchEvent: Sendable {
     case project(URL, worktree: Bool)
+    case container(URL, children: Set<String>, mixed: Bool)
     case refresh
     case indexUnavailable
     case foldersUnavailable
@@ -24,6 +28,11 @@ struct ProjectSuggestions: Sendable {
     var home = FileManager.default.homeDirectoryForCurrentUser
     var locator = ProjectLocator()
     static let commonNames = ["Projects", "Developer", "Development", "Code", "src", "Source", "Repos", "Repositories"]
+    static func isContainerName(_ name: String) -> Bool {
+        commonNames.contains { $0.caseInsensitiveCompare(name) == .orderedSame } ||
+            name.lowercased().hasSuffix("projects")
+    }
+
     private static let pruned: Set<String> = [".git", "node_modules", "target", "build", "dist", ".next", ".build", ".turbo", ".terraform", ".venv", "venv", "vendor", ".cache", ".pytest_cache", ".ruff_cache", ".mypy_cache"]
     private static let manifests = Set(ArtifactKind.allCases.flatMap(\.markerNames) + ["go.mod", "requirements.txt", "Gemfile", "CMakeLists.txt", "composer.json"])
 
@@ -75,8 +84,16 @@ struct ProjectSuggestions: Sendable {
         return collected.result
     }
 
+    func parentOption(for url: URL) -> URL? {
+        let parent = url.deletingLastPathComponent().standardizedFileURL
+        return allowed(parent) ? parent : nil
+    }
+
     private func allowed(_ url: URL) -> Bool {
-        url.standardizedFileURL != home.standardizedFileURL &&
+        let components = url.standardizedFileURL.pathComponents
+        // Go module downloads contain real manifests but are dependencies, not workspaces.
+        let isGoModuleCache = zip(components, components.dropFirst()).contains { $0 == "pkg" && $1 == "mod" }
+        return !isGoModuleCache && url.standardizedFileURL != home.standardizedFileURL &&
         !ProjectLocator.isAutomaticallyExcluded(url, home: home) &&
         !url.pathComponents.contains(where: Self.pruned.contains) &&
         PathSafety.isDirectory(url) &&
@@ -111,8 +128,8 @@ struct ProjectSuggestions: Sendable {
                 at: home, includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
             ).filter { allowed($0) }.sorted {
-                let left = Self.commonNames.contains($0.lastPathComponent)
-                let right = Self.commonNames.contains($1.lastPathComponent)
+                let left = Self.isContainerName($0.lastPathComponent)
+                let right = Self.isContainerName($1.lastPathComponent)
                 return left != right ? left : $0.path < $1.path
             }
         } catch { report(.foldersUnavailable); return }
@@ -131,15 +148,24 @@ struct ProjectSuggestions: Sendable {
                     options: [.skipsSubdirectoryDescendants, .skipsPackageDescendants],
                     errorHandler: { _, _ in failed = true; return true }
                 ) else { report(.foldersUnavailable); continue }
+                var children = Set<String>()
+                var mixed = false
                 while let child = entries.nextObject() as? URL {
                     try Task.checkCancellation()
-                    guard !child.lastPathComponent.hasPrefix("."),
-                          let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+                    guard !child.lastPathComponent.hasPrefix(".") else { continue }
+                    let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                    if values?.isDirectory == true && values?.isSymbolicLink != true {
+                        children.insert(child.standardizedFileURL.path)
+                    } else if !["readme", "readme.md", "readme.txt", "license", "license.md", "license.txt"].contains(child.lastPathComponent.lowercased()) {
+                        mixed = true
+                    }
+                    guard let values,
                           values.isDirectory == true, values.isSymbolicLink != true,
                           allowed(child) else { continue }
                     next.append(child)
                 }
                 if failed { report(.foldersUnavailable) }
+                report(.container(folder, children: children, mixed: mixed || failed))
             }
             level = next
         }
@@ -163,6 +189,7 @@ struct ProjectSuggestions: Sendable {
 
 private struct CollectedProjects {
     let home: URL
+    var containers: [URL: (children: Set<String>, mixed: Bool)] = [:]
     var projects = Set<URL>()
     var worktrees = Set<URL>()
     var indexUnavailable = false
@@ -174,6 +201,8 @@ private struct CollectedProjects {
             let directory = URL(fileURLWithPath: url.standardizedFileURL.path, isDirectory: true)
             projects.insert(directory)
             if worktree { worktrees.insert(directory) }
+        case let .container(url, children, mixed):
+            containers[url.standardizedFileURL] = (children, mixed)
         case .refresh: break
         case .indexUnavailable: indexUnavailable = true
         case .foldersUnavailable: foldersUnavailable = true
@@ -181,19 +210,26 @@ private struct CollectedProjects {
     }
 
     var result: ProjectSuggestionResult {
-        let containers = ProjectSuggestions.commonNames.map { home.appendingPathComponent($0).standardizedFileURL }
-        // Elsewhere keep the precise outer project, never an unrelated parent folder.
+        let projectPaths = Set(projects.map(\.path))
+        let workspaces = containers.compactMap { url, evidence -> URL? in
+            let minimum = ProjectSuggestions.isContainerName(url.lastPathComponent) ? 1 : 2
+            guard url.path != home.standardizedFileURL.path, !evidence.mixed,
+                  evidence.children.count >= minimum,
+                  evidence.children.isSubset(of: projectPaths) else { return nil }
+            return url
+        }.sorted { $0.path < $1.path }
+        // Group only inspected containers whose visible contents support the inference.
         let ordered = projects.sorted { $0.pathComponents.count < $1.pathComponents.count }
         var roots: [URL] = []
         var grouped: [URL: [URL]] = [:]
         for project in ordered {
-            let root = containers.first { PathSafety.contains(project, in: $0) } ??
+            let root = workspaces.first { PathSafety.contains(project, in: $0) } ??
                 roots.first { PathSafety.contains(project, in: $0) } ?? project
             if grouped[root] == nil { roots.append(root) }
             grouped[root, default: []].append(project)
         }
         let suggestions = grouped.map { root, found in
-            ProjectSuggestion(url: root, projects: found.count, worktrees: found.filter(worktrees.contains).count)
+            ProjectSuggestion(url: root, projectURLs: found.sorted { $0.path < $1.path }, worktreeURLs: found.filter(worktrees.contains))
         }.sorted { $0.url.path < $1.url.path }
         return ProjectSuggestionResult(suggestions: suggestions, indexUnavailable: indexUnavailable, foldersUnavailable: foldersUnavailable)
     }
