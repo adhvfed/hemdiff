@@ -71,8 +71,14 @@ struct RootView: View {
                     OverviewView(openReclaim: { model.destination = .reclaim }, openFiles: { kind in
                         fileReview.kinds = kind.map { [$0] } ?? []
                         fileReview.search = ""
+                        fileReview.order = .size
                         model.destination = .files
-                    }, openTrash: { model.destination = .trash })
+                    }, openTrash: { model.destination = .trash }, openFile: { item in
+                        fileReview.kinds = []
+                        fileReview.search = item.path
+                        fileReview.order = .size
+                        model.destination = .files
+                    })
                 case .reclaim:
                     ReclaimView()
                 case .files:
@@ -94,6 +100,7 @@ struct RootView: View {
         }
         .tint(DiskSiftTheme.node)
         .toolbar {
+            if model.destination != .overview {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     model.isScanning ? model.cancelScan() : model.startScan()
@@ -105,6 +112,7 @@ struct RootView: View {
                 }
                 .help(model.isScanning ? "Cancel the current scan" : "Scan configured locations")
                 .disabled(model.isBusy && !model.isScanning)
+            }
             }
         }
     }

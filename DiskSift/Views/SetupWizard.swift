@@ -23,8 +23,7 @@ struct SetupWizard: View {
             HStack(spacing: 14) {
                 Image("BrandMark").resizable().scaledToFit().frame(width: 48, height: 48)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Find reclaimable space").font(.system(size: 28, weight: .semibold, design: .rounded)).tracking(-0.6)
-                    Text("Your workspaces, ready to scan.").font(.callout).foregroundStyle(.secondary)
+                    Text("Choose folders to scan").font(.system(size: 28, weight: .semibold, design: .rounded)).tracking(-0.6)
                 }
             }
             HStack {
@@ -66,7 +65,6 @@ struct SetupWizard: View {
             HStack {
                 Button("Choose Folders…") { chooseFolders() }
                 Spacer()
-                Text("You can change these anytime.").font(.caption).foregroundStyle(.secondary)
             }
             if result?.foldersUnavailable == true || result?.indexUnavailable == true {
                 Text("Some locations couldn’t be checked. You can add them manually.")
