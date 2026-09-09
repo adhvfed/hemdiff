@@ -101,8 +101,7 @@ struct MenuBarInstaller: View {
     var body: some View {
         Color.clear.onAppear {
             controller.install(model: model) {
-                openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
+                MainWindow.show(using: openWindow)
             }
         }
     }
@@ -115,5 +114,18 @@ enum MenuBarIcon {
         image.size = NSSize(width: 22, height: 22)
         image.isTemplate = true
         return image
+    }
+}
+
+
+@MainActor
+enum MainWindow {
+    static func show(using openWindow: OpenWindowAction) {
+        if let window = NSApp.windows.first(where: { $0.title == "Hemdiff" && $0.canBecomeMain }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            openWindow(id: "main")
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 }

@@ -45,7 +45,7 @@ struct MenuBarPanel: View {
     }
     private func showMainWindow() {
         if let openMainWindow { openMainWindow() }
-        else { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
+        else { MainWindow.show(using: openWindow) }
     }
 
     private func metric(_ name: String, bytes: Int64, icon: String, color: Color, available: Bool = true) -> some View {

@@ -7,7 +7,7 @@ struct DiskSiftApp: App {
     @AppStorage("showsMenuBarExtra") private var showsMenuBarExtra = true
 
     var body: some Scene {
-        Window("Hemdiff", id: "main") {
+        WindowGroup("Hemdiff", id: "main") {
             RootView()
                 .environmentObject(model)
                 .background(MenuBarInstaller(controller: menuBar, model: model))
@@ -16,6 +16,7 @@ struct DiskSiftApp: App {
         .defaultSize(width: 1040, height: 720)
         .commands {
             SetupCommands(model: model)
+            CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .sidebar) {
                 Divider()
                 Toggle("Show Menu Bar Icon", isOn: $showsMenuBarExtra)
@@ -35,8 +36,7 @@ private struct SetupCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Run Setup Wizard…") {
-                openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
+                MainWindow.show(using: openWindow)
                 model.showSetup()
             }.disabled(model.isReviewingDeletion || model.isManagingFiles || !model.reclaimingArtifactIDs.isEmpty)
         }
