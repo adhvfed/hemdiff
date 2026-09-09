@@ -1,4 +1,4 @@
-# HemDif — Fold
+# Hemdiff — Fold
 
 The selected folded-ribbon concept, redrawn as editable vector geometry in Strøk.
 The mark uses three named Bézier surfaces: `upper-tail`, `lower-tail`, and
@@ -46,5 +46,6 @@ backgrounds outside their artwork. The generated ICNS was successfully built by
 Apple's iconutil.
 
 Built with the installed `strok 0.1.0`; no renderer modifications were required.
-These are brand assets; the application's display name and installed icon have
-not been changed by this asset-only update.
+The app now uses these sources as its Hemdiff identity. The original asset
+filenames remain stable; regenerate and copy exports into the app asset catalog
+when changing the mark.

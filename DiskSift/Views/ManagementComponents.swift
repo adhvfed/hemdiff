@@ -32,7 +32,7 @@ struct SpaceHero: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.secondary)
                 Text(isAvailable ? ByteText.compact(bytes) : "—")
-                    .font(.system(size: 44, weight: .semibold, design: .rounded))
+                    .font(.system(size: 36, weight: .semibold, design: .rounded))
                     .tracking(-1.5).monospacedDigit().contentTransition(.numericText())
                 Text(subtitle).font(.callout).foregroundStyle(.secondary)
             }
@@ -45,11 +45,11 @@ struct SpaceHero: View {
                 Image(systemName: "arrow.down.right")
                     .font(.system(size: 27, weight: .medium)).foregroundStyle(color)
             }
-            .frame(width: 86, height: 86)
+            .frame(width: 64, height: 64)
             .accessibilityHidden(true)
             if !trailing.isEmpty { Text(trailing).font(.caption).foregroundStyle(.secondary) }
         }
-        .padding(24)
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: 18).fill(.background.secondary)
@@ -188,7 +188,39 @@ struct FileConfirmationSheet: View {
 struct ModelMessages: View {
     @EnvironmentObject private var model: AppModel
     var body: some View {
-        if let error = model.errorMessage { StatusMessage(text: error, systemImage: "exclamationmark.triangle", tint: .orange) }
-        if let notice = model.noticeMessage { StatusMessage(text: notice, systemImage: "checkmark.circle", tint: DiskSiftTheme.node) }
+        if let error = model.errorMessage {
+            message(error, icon: "exclamationmark.triangle", tint: .orange) { model.errorMessage = nil }
+        }
+        if let notice = model.noticeMessage {
+            message(notice, icon: "checkmark.circle", tint: DiskSiftTheme.node) { model.noticeMessage = nil }
+        }
+    }
+    private func message(_ text: String, icon: String, tint: Color, dismiss: @escaping () -> Void) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Label(text, systemImage: icon).font(.callout).foregroundStyle(tint)
+            Spacer(minLength: 0)
+            Button(action: dismiss) { Image(systemName: "xmark").font(.caption) }
+                .buttonStyle(.plain).help("Dismiss message")
+        }.padding(12).background(tint.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct ReviewSearchField: View {
+    let placeholder: String
+    @Binding var text: String
+    @FocusState private var focused: Bool
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField(placeholder, text: $text).textFieldStyle(.plain).focused($focused)
+            if !text.isEmpty {
+                Button { text = ""; focused = true } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain).help("Clear search")
+            }
+        }.padding(.horizontal, 10).padding(.vertical, 7)
+            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focused ? DiskSiftTheme.node : Color.primary.opacity(0.1), lineWidth: 1))
+            .background { Button("Find") { focused = true }.keyboardShortcut("f").hidden() }
+            .onExitCommand { text = "" }
     }
 }

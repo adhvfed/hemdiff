@@ -10,7 +10,7 @@ struct SetupWizard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             HStack {
-                Text("DISKSIFT SETUP").font(.caption.weight(.semibold)).tracking(2).foregroundStyle(.secondary)
+                Text("HEMDIFF SETUP").font(.caption.weight(.semibold)).tracking(2).foregroundStyle(.secondary)
                 Spacer()
                 Text("\(model.setupPage + 1) of 3").font(.caption).foregroundStyle(.secondary)
             }
@@ -19,7 +19,10 @@ struct SetupWizard: View {
                     Capsule().fill(page <= model.setupPage ? DiskSiftTheme.node : .secondary.opacity(0.15)).frame(height: 3)
                 }
             }.accessibilityHidden(true)
-            Image(systemName: icons[model.setupPage]).font(.system(size: 32))
+            Group {
+                if model.setupPage == 0 { Image("BrandMark").resizable().scaledToFit().padding(8) }
+                else { Image(systemName: icons[model.setupPage]).font(.system(size: 32)) }
+            }
                 .foregroundStyle(DiskSiftTheme.node).frame(width: 68, height: 68)
                 .background(DiskSiftTheme.node.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
             Text(titles[model.setupPage]).font(.system(size: 30, weight: .semibold, design: .rounded)).tracking(-0.7)
@@ -63,7 +66,7 @@ struct SetupWizard: View {
 
     private var locations: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("DiskSift discovers indexed projects and linked worktrees. Add folders for a complete file inventory.")
+            Text("Hemdiff discovers indexed projects and linked worktrees. Add folders for a complete file inventory.")
                 .font(.callout).foregroundStyle(.secondary)
             ScrollView {
                 VStack(spacing: 12) {
@@ -91,12 +94,12 @@ struct SetupWizard: View {
 
     private var access: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Full Disk Access lets DiskSift measure Trash and show what emptying it could recover. You can continue without it.")
+            Text("Full Disk Access lets Hemdiff measure Trash and show what emptying it could recover. You can continue without it.")
                 .font(.callout).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 10) {
                 Text("1. Open Full Disk Access.")
-                Text("2. Enable DiskSift. If it’s missing, use + to add it from Applications.")
-                Text("3. Reopen DiskSift if macOS asks.")
+                Text("2. Enable Hemdiff. If it’s missing, use + to add it from Applications.")
+                Text("3. Reopen Hemdiff if macOS asks.")
             }.font(.callout)
             HStack {
                 Button("Open Full Disk Access") { SystemSettings.openFullDiskAccess() }

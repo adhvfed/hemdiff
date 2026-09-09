@@ -7,6 +7,7 @@ struct ReclaimView: View {
     @State private var confirmsReclaim = false
     @State private var pending: [Artifact] = []
     @State private var groupByProject = true
+    @State private var collapsed = Set<String>()
 
     private var visible: [Artifact] {
         model.snapshot.artifacts.filter {
@@ -25,14 +26,17 @@ struct ReclaimView: View {
             HStack {
                 Text("Build output").font(.system(size: 30, weight: .bold, design: .rounded)).tracking(-0.6)
                 Spacer()
-                Toggle("Group by project", isOn: $groupByProject).toggleStyle(.switch).controlSize(.small)
+                Picker("Group by", selection: $groupByProject) {
+                    Text("Project").tag(true)
+                    Text("Tool").tag(false)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 160)
             }
             SpaceHero(title: "Rebuildable storage", bytes: model.snapshot.artifactBytes,
                       subtitle: "\(model.snapshot.artifacts.count) folders across \(Set(model.snapshot.artifacts.map(\.projectPath)).count) projects",
                       fraction: Double(model.snapshot.artifactBytes) / Double(max(1, model.volume?.usedBytes ?? model.snapshot.artifactBytes)))
             ModelMessages()
             HStack {
-                TextField("Filter by project or path", text: $search).textFieldStyle(.roundedBorder)
+                ReviewSearchField(placeholder: "Search project or path", text: $search)
                 Picker("Tool", selection: $family) {
                     Text("All tools").tag("All tools")
                     ForEach(Array(Set(model.snapshot.artifacts.map { $0.kind.family })).sorted(), id: \.self) { Text($0).tag($0) }
@@ -44,6 +48,13 @@ struct ReclaimView: View {
                     ForEach(groups, id: \.name) { group in
                         VStack(spacing: 0) {
                             HStack {
+                                Button {
+                                    if collapsed.contains(group.name) { collapsed.remove(group.name) }
+                                    else { collapsed.insert(group.name) }
+                                } label: {
+                                    Image(systemName: collapsed.contains(group.name) ? "chevron.right" : "chevron.down")
+                                        .font(.caption.weight(.semibold)).frame(width: 12)
+                                }.buttonStyle(.plain).help(collapsed.contains(group.name) ? "Expand group" : "Collapse group")
                                 Button {
                                     let ids = Set(group.artifacts.map(\.id))
                                     if ids.isSubset(of: model.selectedArtifactIDs) { model.selectedArtifactIDs.subtract(ids) }
@@ -58,11 +69,13 @@ struct ReclaimView: View {
                                 Spacer()
                                 Text(ByteText.string(group.bytes)).font(.title3.weight(.semibold)).monospacedDigit()
                             }.padding(16).background(DiskSiftTheme.node.opacity(0.05))
+                            if !collapsed.contains(group.name) {
                             ForEach(group.artifacts) { artifact in
                                 VStack(alignment: .leading, spacing: 0) {
                                     ArtifactRow(artifact: artifact, selectable: true)
                                     Text(artifact.kind.consequence).font(.caption).foregroundStyle(.secondary).padding(.leading, 56).padding(.bottom, 12)
                                 }.padding(.horizontal, 16)
+                            }
                             }
                         }.background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -71,7 +84,7 @@ struct ReclaimView: View {
                     if visible.isEmpty { ContentUnavailableView("No matching build folders", systemImage: "shippingbox") }
                 }
             }
-        }.padding(28)
+        }.padding(24)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack(spacing: 14) {
                 Image(systemName: "shippingbox.fill").font(.title2).foregroundStyle(DiskSiftTheme.node)

@@ -5,7 +5,7 @@ struct DiskSiftApp: App {
     @StateObject private var model = AppModel()
 
     var body: some Scene {
-        Window("DiskSift", id: "main") {
+        Window("Hemdiff", id: "main") {
             RootView()
                 .environmentObject(model)
                 .frame(minWidth: 780, minHeight: 560)
@@ -28,7 +28,7 @@ struct DiskSiftApp: App {
         } label: {
             Image("MenuBarIcon")
                 .renderingMode(.template)
-                .accessibilityLabel("DiskSift")
+                .accessibilityLabel("Hemdiff")
         }
         .menuBarExtraStyle(.window)
     }

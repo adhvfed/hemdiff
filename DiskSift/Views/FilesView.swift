@@ -3,8 +3,8 @@ import SwiftUI
 
 struct FilesView: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject var review: FileReviewModel
     let openLocations: () -> Void
-    @StateObject private var review = FileReviewModel()
     @State private var confirmation: FileConfirmation?
     @State private var preview: ContentItem?
     @State private var checkedOnly = false
@@ -40,7 +40,7 @@ struct FilesView: View {
                                         }
                                     } label: { Label("Types", systemImage: "line.3.horizontal.decrease") }
                                 }
-                                TextField("Filter files by name or path", text: $review.search).textFieldStyle(.roundedBorder)
+                                ReviewSearchField(placeholder: "Search name or path", text: $review.search)
                                 Picker("Sort", selection: $review.order) {
                                     ForEach(FileOrder.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                                 }.frame(width: 140)
@@ -66,7 +66,7 @@ struct FilesView: View {
                     }
                 }
             }
-            .padding(28)
+            .padding(24)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { selectionTray }
         .navigationTitle("Files")
@@ -128,6 +128,9 @@ struct FilesView: View {
                 Text("↑ ↓ to navigate · Space to check · ⌘Y to preview").font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
+            if !review.checked.isEmpty {
+                Button("Clear") { review.clear() }.help("Uncheck all files")
+            }
             Menu {
                 Button("Check This Page") { review.checkPage() }.disabled(checkedOnly)
                 Button("Clear Checked") { review.clear() }

@@ -1,6 +1,6 @@
-# DiskSift
+# Hemdiff
 
-DiskSift is a native macOS disk monitor focused on low-overhead visibility and
+Hemdiff (formerly DiskSift) is a native macOS disk monitor focused on low-overhead visibility and
 safe cleanup of regenerable developer storage: Rust `target`, JavaScript
 `node_modules`, Next.js `.next`, Turbo, Terraform/OpenTofu providers, Python
 tool caches, Maven/Gradle, SwiftPM `.build`, and Xcode `DerivedData` folders. `~/Projects` is scanned directly by default so the inventory does not
@@ -8,7 +8,7 @@ depend on Spotlight indexing being current.
 
 Git discovery follows registered worktrees from repositories found in the index
 or a scan location. Hidden and detached checkouts, nested packages, and worktrees
-owned by bare repositories are supported. DiskSift validates Git's pointers in
+owned by bare repositories are supported. Hemdiff validates Git's pointers in
 both directions, so stale registrations and submodule pointer files do not become
 worktree results. Each checkout's build artifacts are listed separately; cleanup
 deletes only the confirmed artifact folder, never the checkout or Git metadata.
@@ -62,9 +62,9 @@ These are practical project conventions, not a guarantee about custom user data.
 
 On first launch, the setup wizard introduces cleanup, lets you choose scan
 folders, and optionally guides you through Trash access. **Open Full Disk Access**
-opens the matching System Settings pane directly. Enable DiskSift there and reopen
+opens the matching System Settings pane directly. Enable Hemdiff there and reopen
 it if macOS requests it. Setup progress survives reopening; permission is optional.
-Use **DiskSift → Run Setup Wizard…** to repeat setup without resetting scan folders.
+Use **Hemdiff → Run Setup Wizard…** to repeat setup without resetting scan folders.
 
 ## Build
 
@@ -74,7 +74,7 @@ xcodebuild -project DiskSift.xcodeproj -scheme DiskSift -configuration Debug bui
 ```
 
 Scans run at utility priority, are cached between launches, and refresh while
-DiskSift remains open once the inventory is six hours old. Disk capacity
+Hemdiff remains open once the inventory is six hours old. Disk capacity
 refreshes independently without a filesystem walk. Individual or selected
 folders can be cleaned through an explicit confirmation; every target is
 revalidated before it is permanently deleted.
@@ -90,3 +90,16 @@ Run the tests with:
 xcodebuild -project DiskSift.xcodeproj -scheme DiskSift \
   -destination 'platform=macOS,arch=arm64' test CODE_SIGNING_ALLOWED=NO
 ```
+
+## Hemdiff identity and review workflow
+
+The Fold mark is used in the app icon, menu bar, sidebar, and setup. Source assets
+live in `design/hemdif/`; the app builds as `Hemdiff.app`. The Xcode project,
+scheme, Swift module, bundle identifier, and Application Support location retain
+their original names so existing installations keep their settings and inventory.
+
+File selections and category filters survive sidebar navigation. Click a content
+category in Storage to review it directly. Command-F focuses search; Escape
+clears it. Cleanup groups can be collapsed and grouped by Project or Tool. Trash
+supports search, sorting, and checking the visible results. Empty Trash still
+confirms the complete reviewed Trash snapshot, regardless of the search filter.

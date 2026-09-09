@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad-upper-fill" x1="50%" y1="0%" x2="50%" y2="100%" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#138F88"/><stop offset="100%" stop-color="#064A4D"/></linearGradient>
+    <linearGradient id="grad-lower-fill" x1="50%" y1="0%" x2="50%" y2="100%" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#05474A"/><stop offset="100%" stop-color="#159D93"/></linearGradient>
+    <linearGradient id="grad-front-fill" x1="0%" y1="100%" x2="100%" y2="0%" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#159D93"/><stop offset="100%" stop-color="#64E5D3"/></linearGradient>
+  </defs>
+    <path id="upper" d="M29 12 C35.075 12, 40 16.925, 40 23 L40 54 C40 60.075, 35.075 65, 29 65 C22.925 65, 18 60.075, 18 54 L18 23 C18 16.925, 22.925 12, 29 12Z" fill="url(#grad-upper-fill)" stroke="none" />
+    <path id="lower" d="M71 35 C77.075 35, 82 39.925, 82 46 L82 77 C82 83.075, 77.075 88, 71 88 C64.925 88, 60 83.075, 60 77 L60 46 C60 39.925, 64.925 35, 71 35Z" fill="url(#grad-lower-fill)" stroke="none" />
+    <path id="front" d="M18 43 C18 50, 23 52.2, 30 48 L66 27 C73 22.9, 82 27.5, 82 36 L82 57 C82 50, 77 47.8, 70 52 L34 73 C27 77.1, 18 72.5, 18 64Z" fill="url(#grad-front-fill)" stroke="none" />
+</svg>

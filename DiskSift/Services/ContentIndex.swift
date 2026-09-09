@@ -3,6 +3,20 @@ import SQLite3
 
 enum FileOrder: String, CaseIterable, Sendable {
     case size = "Size", name = "Name", modified = "Modified", path = "Location"
+
+    func precedes(_ lhs: ContentItem, _ rhs: ContentItem) -> Bool {
+        switch self {
+        case .size:
+            if lhs.allocatedBytes != rhs.allocatedBytes { return lhs.allocatedBytes > rhs.allocatedBytes }
+        case .modified:
+            if lhs.modifiedAt != rhs.modifiedAt { return (lhs.modifiedAt ?? .distantPast) > (rhs.modifiedAt ?? .distantPast) }
+        case .name:
+            let comparison = lhs.url.lastPathComponent.localizedStandardCompare(rhs.url.lastPathComponent)
+            if comparison != .orderedSame { return comparison == .orderedAscending }
+        case .path: break
+        }
+        return lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending
+    }
 }
 
 struct ContentPage: Sendable {

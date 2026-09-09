@@ -7,7 +7,8 @@ struct MenuBarPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("DiskSift").font(.headline)
+                Image("BrandMark").resizable().scaledToFit().frame(width: 26, height: 26)
+                Text("Hemdiff").font(.headline)
                 Spacer()
                 if model.isBusy { ProgressView().controlSize(.small) }
             }
@@ -23,7 +24,7 @@ struct MenuBarPanel: View {
             if !model.trashSnapshot.unavailableRoots.isEmpty { Text("Trash access is restricted").font(.caption).foregroundStyle(.orange) }
             Divider()
             HStack {
-                Button("Open DiskSift") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }.keyboardShortcut(.defaultAction)
+                Button("Open Hemdiff") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }.keyboardShortcut(.defaultAction)
                 Spacer()
                 Button(model.isScanning ? "Cancel" : "Scan") { model.isScanning ? model.cancelScan() : model.startScan() }.disabled(model.isBusy && !model.isScanning)
             }

@@ -3,6 +3,9 @@ import SwiftUI
 
 struct TrashView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var search = ""
+    @State private var order: FileOrder = .size
+    private var visible: [ContentItem] { trash.items.filter { search.isEmpty || $0.path.localizedStandardContains(search) }.sorted(by: order.precedes) }
     @State private var checked = Set<String>()
     @State private var focused = Set<String>()
     @State private var confirmation: FileConfirmation?
@@ -19,7 +22,7 @@ struct TrashView: View {
                 Button("Open in Finder") { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")) }
             }
             SpaceHero(title: "Estimated space to recover", bytes: trash.bytes,
-                      subtitle: "\(trash.items.count.formatted()) items in Trash", color: DiskSiftTheme.rust,
+                      subtitle: trash.hasEstimate ? "\(trash.items.count.formatted()) accessible items" : "Access needed to measure Trash", color: DiskSiftTheme.rust,
                       fraction: Double(trash.bytes) / Double(max(1, model.volume?.usedBytes ?? trash.bytes)),
                       isAvailable: trash.hasEstimate)
             ModelMessages()
@@ -28,7 +31,7 @@ struct TrashView: View {
                     Image(systemName: "lock.shield").font(.title2).foregroundStyle(.orange)
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Trash access is restricted").font(.headline)
-                        Text("Allow DiskSift in System Settings → Privacy & Security → Full Disk Access, then reopen the app. The estimate includes only accessible items.")
+                        Text("Allow Hemdiff in System Settings → Privacy & Security → Full Disk Access, then reopen the app. The estimate includes only accessible items.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -41,8 +44,15 @@ struct TrashView: View {
                 ContentUnavailableView(trash.unavailableRoots.isEmpty ? "Trash is empty" : "No accessible items", systemImage: "trash")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                FileItemTable(items: trash.items, focused: $focused, checked: checked, toggle: toggle, toggleFocused: {
-                    let items = trash.items.filter { focused.contains($0.path) }
+                HStack {
+                    ReviewSearchField(placeholder: "Search Trash", text: $search)
+                    Picker("Sort", selection: $order) {
+                        ForEach(FileOrder.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }.frame(width: 145)
+                    Button("Check Visible") { checked.formUnion(visible.map(\.path)) }
+                }
+                FileItemTable(items: visible, focused: $focused, checked: checked, toggle: toggle, toggleFocused: {
+                    let items = visible.filter { focused.contains($0.path) }
                     let remove = items.allSatisfy { checked.contains($0.path) }
                     for item in items {
                         if remove { checked.remove(item.path) } else { checked.insert(item.path) }
@@ -53,7 +63,7 @@ struct TrashView: View {
             }
             if trash.errorsSkipped > 0 { Text("\(trash.errorsSkipped) items couldn’t be measured.").font(.caption).foregroundStyle(.orange) }
         }
-        .padding(28)
+        .padding(24)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack(spacing: 14) {
                 Image(systemName: "trash").font(.title2).foregroundStyle(DiskSiftTheme.rust)
@@ -64,6 +74,7 @@ struct TrashView: View {
                 }
                 Spacer()
                 if !checked.isEmpty {
+                    Button("Clear") { checked.removeAll() }
                     Button("Delete Checked…") { confirmation = FileConfirmation(items: trash.items.filter { checked.contains($0.path) }, permanent: true) }
                         .disabled(model.isBusy)
                 }

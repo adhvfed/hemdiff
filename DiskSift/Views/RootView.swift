@@ -31,15 +31,34 @@ enum AppDestination: String, CaseIterable, Identifiable {
 }
 
 struct RootView: View {
+    @Environment(\.controlActiveState) private var controlState
     @EnvironmentObject private var model: AppModel
+    @StateObject private var fileReview = FileReviewModel()
     @State private var destination: AppDestination? = .overview
 
     var body: some View {
         NavigationSplitView {
             List(AppDestination.allCases, selection: $destination) { item in
-                Label(item.title, systemImage: item.icon)
+                HStack {
+                    Label {
+                        Text(item.title).foregroundStyle(destination == item && controlState != .inactive ? Color.white : Color.primary)
+                    } icon: {
+                        Image(systemName: item.icon).foregroundStyle(destination == item && controlState != .inactive ? Color.white : DiskSiftTheme.node)
+                    }
+                    Spacer(minLength: 4)
+                    if item == .reclaim && !model.snapshot.artifacts.isEmpty {
+                        Text(ByteText.compact(model.snapshot.artifactBytes)).font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
                     .tag(item)
                     .padding(.vertical, 3)
+            }
+            .safeAreaInset(edge: .top) {
+                HStack(spacing: 10) {
+                    Image("BrandMark").resizable().scaledToFit().frame(width: 34, height: 34)
+                    Text("Hemdiff").font(.system(size: 19, weight: .semibold, design: .rounded)).tracking(-0.5)
+                    Spacer()
+                }.padding(.horizontal, 18).padding(.vertical, 16)
             }
             .navigationSplitViewColumnWidth(min: 184, ideal: 206)
             .safeAreaInset(edge: .bottom) {
@@ -50,11 +69,15 @@ struct RootView: View {
             Group {
                 switch destination ?? .overview {
                 case .overview:
-                    OverviewView(openReclaim: { destination = .reclaim }, openFiles: { destination = .files }, openTrash: { destination = .trash })
+                    OverviewView(openReclaim: { destination = .reclaim }, openFiles: { kind in
+                        fileReview.kinds = kind.map { [$0] } ?? []
+                        fileReview.search = ""
+                        destination = .files
+                    }, openTrash: { destination = .trash })
                 case .reclaim:
                     ReclaimView()
                 case .files:
-                    FilesView(openLocations: { destination = .locations })
+                    FilesView(review: fileReview, openLocations: { destination = .locations })
                 case .trash:
                     TrashView()
                 case .locations:
@@ -92,7 +115,17 @@ private struct SidebarStatus: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 9) {
+            if let volume = model.volume {
+                HStack {
+                    Text(ByteText.compact(volume.availableBytes)).font(.callout.weight(.semibold)).monospacedDigit()
+                    Text("free").font(.caption).foregroundStyle(.secondary)
+                }
+                GeometryReader { proxy in
+                    Capsule().fill(.primary.opacity(0.08))
+                    Capsule().fill(DiskSiftTheme.node).frame(width: proxy.size.width * volume.usedFraction)
+                }.frame(height: 4).accessibilityLabel("\(Int(volume.usedFraction * 100)) percent used")
+            }
             if let progress = model.scanProgress {
                 Text(progress.summary)
                     .font(.caption2)

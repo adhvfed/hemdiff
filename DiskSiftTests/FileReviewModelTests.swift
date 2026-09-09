@@ -3,6 +3,22 @@ import XCTest
 
 @MainActor
 final class FileReviewModelTests: XCTestCase {
+    func testReviewSortingUpdatesCheckedAndCachedItems() async {
+        var builder = ContentInventoryBuilder()
+        let a = ContentItem(path: "/test/a.log", kind: .logs, allocatedBytes: 10, modifiedAt: nil, isPackage: false)
+        let b = ContentItem(path: "/test/b.log", kind: .logs, allocatedBytes: 20, modifiedAt: Date(), isPackage: false)
+        builder.record(a); builder.record(b)
+        let review = FileReviewModel()
+        review.toggle(a); review.toggle(b)
+        XCTAssertEqual(review.checkedItems.map(\.path), [b.path, a.path])
+        review.order = .name
+        await review.load(builder.inventory)
+        XCTAssertEqual(review.items.map(\.path), [a.path, b.path])
+        XCTAssertEqual(review.checkedItems.map(\.path), [a.path, b.path])
+        review.order = .modified
+        XCTAssertEqual(review.checkedItems.map(\.path), [b.path, a.path])
+    }
+
     func testCheckedItemsSurviveCategoryChangesAndPaging() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("DiskSiftReview-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

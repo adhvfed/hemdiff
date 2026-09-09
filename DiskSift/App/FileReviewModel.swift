@@ -16,7 +16,7 @@ final class FileReviewModel: ObservableObject {
     private var generation = UUID()
     let pageSize = 250
     var checkedBytes: Int64 { checked.values.reduce(0) { $0 + $1.allocatedBytes } }
-    var checkedItems: [ContentItem] { checked.values.sorted { $0.path < $1.path } }
+    var checkedItems: [ContentItem] { checked.values.sorted(by: order.precedes) }
 
     func load(_ inventory: ContentInventory, offset: Int = 0) async {
         let token = UUID()
@@ -32,10 +32,12 @@ final class FileReviewModel: ObservableObject {
                 }.value
             } else {
                 // Pre-index snapshots stay reviewable until their replacement scan finishes.
+                result = await Task.detached(priority: .utility) {
                 let matching = inventory.summaries.filter { kinds.isEmpty || kinds.contains($0.kind) }
                     .flatMap(\.largestItems).filter { search.isEmpty || $0.path.localizedStandardContains(search) }
-                    .sorted { $0.allocatedBytes > $1.allocatedBytes }
-                result = ContentPage(items: Array(matching.dropFirst(offset).prefix(pageSize)), count: matching.count)
+                    .sorted(by: order.precedes)
+                return ContentPage(items: Array(matching.dropFirst(offset).prefix(pageSize)), count: matching.count)
+                }.value
             }
             guard token == generation else { return }
             items = result.items

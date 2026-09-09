@@ -68,11 +68,10 @@ struct ArtifactRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
-                    Text(artifact.projectName)
+                    Text(artifact.kind.folderName)
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
-                    Text(artifact.worktreeName.map { "\($0) worktree · \(artifact.kind.folderName)" }
-                         ?? artifact.kind.title)
+                    Text(artifact.worktreeName.map { "\($0) worktree" } ?? artifact.kind.family)
                         .font(.caption)
                         .foregroundStyle(DiskSiftTheme.color(for: artifact.kind))
                 }

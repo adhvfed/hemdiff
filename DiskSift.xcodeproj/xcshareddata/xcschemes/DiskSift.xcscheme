@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "98106E41F25B1425A9300D62"
-               BuildableName = "DiskSift.app"
+               BuildableName = "Hemdiff.app"
                BlueprintName = "DiskSift"
                ReferencedContainer = "container:DiskSift.xcodeproj">
             </BuildableReference>
@@ -33,7 +33,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "98106E41F25B1425A9300D62"
-            BuildableName = "DiskSift.app"
+            BuildableName = "Hemdiff.app"
             BlueprintName = "DiskSift"
             ReferencedContainer = "container:DiskSift.xcodeproj">
          </BuildableReference>
@@ -69,7 +69,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "98106E41F25B1425A9300D62"
-            BuildableName = "DiskSift.app"
+            BuildableName = "Hemdiff.app"
             BlueprintName = "DiskSift"
             ReferencedContainer = "container:DiskSift.xcodeproj">
          </BuildableReference>
@@ -88,7 +88,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "98106E41F25B1425A9300D62"
-            BuildableName = "DiskSift.app"
+            BuildableName = "Hemdiff.app"
             BlueprintName = "DiskSift"
             ReferencedContainer = "container:DiskSift.xcodeproj">
          </BuildableReference>

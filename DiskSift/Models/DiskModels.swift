@@ -260,6 +260,7 @@ enum ByteText {
         formatter.includesUnit = true
         formatter.isAdaptive = true
         formatter.zeroPadsFractionDigits = false
+        formatter.allowsNonnumericFormatting = false
         return formatter.string(fromByteCount: bytes)
     }
 
@@ -270,6 +271,7 @@ enum ByteText {
         formatter.includesUnit = true
         formatter.isAdaptive = true
         formatter.zeroPadsFractionDigits = false
+        formatter.allowsNonnumericFormatting = false
         return formatter.string(fromByteCount: bytes)
     }
 }

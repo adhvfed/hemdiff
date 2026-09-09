@@ -3,7 +3,7 @@ import SwiftUI
 struct OverviewView: View {
     @EnvironmentObject private var model: AppModel
     let openReclaim: () -> Void
-    let openFiles: () -> Void
+    let openFiles: (ContentKind?) -> Void
     let openTrash: () -> Void
 
     var body: some View {
@@ -20,18 +20,18 @@ struct OverviewView: View {
                 if let volume = model.volume {
                     HStack(spacing: 30) {
                         StorageOrbit(volume: volume, buildBytes: model.snapshot.artifactBytes, trashBytes: model.trashSnapshot.bytes)
-                            .frame(width: 180, height: 180)
+                            .frame(width: 144, height: 144)
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Available now").font(.callout.weight(.medium)).foregroundStyle(.secondary)
                             Text(ByteText.compact(volume.availableBytes))
-                                .font(.system(size: 48, weight: .semibold, design: .rounded)).tracking(-1.8).monospacedDigit()
+                                .font(.system(size: 42, weight: .semibold, design: .rounded)).tracking(-1.8).monospacedDigit()
                             Text("\(ByteText.compact(volume.usedBytes)) used of \(ByteText.compact(volume.totalBytes))")
                                 .font(.callout).foregroundStyle(.secondary)
                             Label(volume.name, systemImage: "internaldrive").font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
                     }
-                    .padding(28).frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(24).frame(maxWidth: .infinity, alignment: .leading)
                     .background {
                         RoundedRectangle(cornerRadius: 20).fill(.background.secondary)
                         RoundedRectangle(cornerRadius: 20).fill(LinearGradient(colors: [DiskSiftTheme.node.opacity(0.13), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -60,14 +60,14 @@ struct OverviewView: View {
                     HStack {
                         Text("Files by type").font(.title3.weight(.semibold))
                         Spacer()
-                        Button("Review Files", action: openFiles)
+                        Button("Review Files") { openFiles(nil) }
                     }
                     if model.snapshot.content.summaries.isEmpty {
                         Text("Add folders in Scan Locations to classify their files.").font(.callout).foregroundStyle(.secondary)
                     } else {
                         VStack(spacing: 14) {
-                            ForEach(model.snapshot.content.summaries.prefix(6)) { summary in
-                                Button(action: openFiles) {
+                            ForEach(model.snapshot.content.summaries) { summary in
+                                Button { openFiles(summary.kind) } label: {
                                     HStack(spacing: 12) {
                                         Image(systemName: summary.kind.icon).foregroundStyle(summary.kind.color).frame(width: 24)
                                         Text(summary.kind.title).font(.callout.weight(.medium)).frame(width: 150, alignment: .leading)
@@ -83,7 +83,7 @@ struct OverviewView: View {
                     }
                 }
             }
-            .padding(28).frame(maxWidth: 1100).frame(maxWidth: .infinity)
+            .padding(24).frame(maxWidth: 1100).frame(maxWidth: .infinity)
         }.navigationTitle("Storage")
     }
 

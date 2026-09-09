@@ -83,7 +83,6 @@
 		73D896C56A30AEFAEEDE5EC2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7CC81E815A7FA4828441B1F6 /* ReclaimView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReclaimView.swift; sourceTree = "<group>"; };
 		802FDFBCF5D3306F80BEF898 /* ArtifactReclaimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactReclaimerTests.swift; sourceTree = "<group>"; };
-		814EF934140EDB40E73E80D0 /* DiskSift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DiskSift.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		81B1E542813661E999B11F14 /* VolumeMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeMonitor.swift; sourceTree = "<group>"; };
 		82D526CEFBDC03180C22C7B0 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		83EDB636BCCE41FD5A08700A /* ArtifactRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactRules.swift; sourceTree = "<group>"; };
@@ -93,6 +92,7 @@
 		9850513DE882E935D6FDC8F1 /* DiskSiftApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskSiftApp.swift; sourceTree = "<group>"; };
 		9A4C096A02C0E81A933C571D /* ContentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentModels.swift; sourceTree = "<group>"; };
 		9C8AC13B034FC5393560317B /* ContentIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentIndex.swift; sourceTree = "<group>"; };
+		9C91A3B83243982BA3818E67 /* Hemdiff.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hemdiff.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AEC2F631D232BC1E58EBBC7F /* StorageRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageRail.swift; sourceTree = "<group>"; };
 		BABE629CB9AF63A00D4CFA86 /* FileReviewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileReviewModelTests.swift; sourceTree = "<group>"; };
 		BB49C6E5422704683A78B00F /* PathSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathSafety.swift; sourceTree = "<group>"; };
@@ -210,8 +210,8 @@
 		C089EB11C61B987DA251CA00 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				814EF934140EDB40E73E80D0 /* DiskSift.app */,
 				1923607C43ED579DD56D3B11 /* DiskSiftTests.xctest */,
+				9C91A3B83243982BA3818E67 /* Hemdiff.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -243,7 +243,7 @@
 			packageProductDependencies = (
 			);
 			productName = DiskSift;
-			productReference = 814EF934140EDB40E73E80D0 /* DiskSift.app */;
+			productReference = 9C91A3B83243982BA3818E67 /* Hemdiff.app */;
 			productType = "com.apple.product-type.application";
 		};
 		AE3B45A3E1F5BDE0A74EE90E /* DiskSiftTests */ = {
@@ -452,7 +452,8 @@
 					"@executable_path/../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.adrians.Disksift;
-				PRODUCT_NAME = DiskSift;
+				PRODUCT_MODULE_NAME = DiskSift;
+				PRODUCT_NAME = Hemdiff;
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -470,7 +471,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.adrians.DiskSiftTests;
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DiskSift.app/Contents/MacOS/DiskSift";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hemdiff.app/Contents/MacOS/Hemdiff";
 			};
 			name = Release;
 		};
@@ -487,7 +488,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.adrians.DiskSiftTests;
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DiskSift.app/Contents/MacOS/DiskSift";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hemdiff.app/Contents/MacOS/Hemdiff";
 			};
 			name = Debug;
 		};
@@ -571,7 +572,8 @@
 					"@executable_path/../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.adrians.Disksift;
-				PRODUCT_NAME = DiskSift;
+				PRODUCT_MODULE_NAME = DiskSift;
+				PRODUCT_NAME = Hemdiff;
 				SDKROOT = macosx;
 			};
 			name = Release;
