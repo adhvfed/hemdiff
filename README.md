@@ -58,6 +58,14 @@ Terraform state, backend metadata, and lockfiles are preserved. Custom output
 paths and generic folders named `cache` or `dist` are not automatically offered.
 These are practical project conventions, not a guarantee about custom user data.
 
+## Setup
+
+On first launch, the setup wizard introduces cleanup, lets you choose scan
+folders, and optionally guides you through Trash access. **Open Full Disk Access**
+opens the matching System Settings pane directly. Enable DiskSift there and reopen
+it if macOS requests it. Setup progress survives reopening; permission is optional.
+Use **DiskSift → Run Setup Wizard…** to repeat setup without resetting scan folders.
+
 ## Build
 
 ```sh

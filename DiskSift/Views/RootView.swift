@@ -67,6 +67,9 @@ struct RootView: View {
                     .ignoresSafeArea()
             }
         }
+        .sheet(isPresented: $model.isShowingSetup) {
+            SetupWizard().environmentObject(model).interactiveDismissDisabled()
+        }
         .tint(DiskSiftTheme.node)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

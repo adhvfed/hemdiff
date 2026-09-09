@@ -32,7 +32,7 @@ struct TrashView: View {
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("System Settings") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app")) }
+                    Button("Open Full Disk Access") { SystemSettings.openFullDiskAccess() }
                 }.padding(18).background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
             }
             if model.isLoadingTrash {

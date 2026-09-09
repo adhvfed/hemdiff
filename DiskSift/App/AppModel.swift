@@ -17,6 +17,22 @@ final class AppModel: ObservableObject {
     @Published private(set) var isLoadingTrash = false
     @Published private(set) var isManagingFiles = false
     @Published private(set) var contentRevision = 0
+    @Published var isShowingSetup = false
+    @Published var setupPage = 0 {
+        didSet { defaults.set(setupPage, forKey: "setupPage") }
+    }
+    func showSetup() {
+        defaults.set(true, forKey: "setupInProgress")
+        setupPage = 0
+        isShowingSetup = true
+    }
+    func finishSetup() {
+        defaults.set(true, forKey: "setupCompleted")
+        defaults.set(false, forKey: "setupInProgress")
+        isShowingSetup = false
+        setupPage = 0
+        if isSnapshotStale { startScan() }
+    }
     var isReviewingDeletion = false
     private let fileOperations: FileOperations
     var isBusy: Bool { isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
@@ -66,6 +82,8 @@ final class AppModel: ObservableObject {
             ) && isDirectory.boolValue ? [projects] : []
         }
 
+        setupPage = min(2, max(0, defaults.integer(forKey: "setupPage")))
+        isShowingSetup = startsAutomatically && (!defaults.bool(forKey: "setupCompleted") || defaults.bool(forKey: "setupInProgress"))
         guard startsAutomatically else { return }
         refreshVolume()
         volumeTask = Task { [weak self] in
@@ -117,7 +135,7 @@ final class AppModel: ObservableObject {
     }
 
     func startScan() {
-        guard !isBusy, !isReviewingDeletion else { return }
+        guard !isBusy, !isReviewingDeletion, !isShowingSetup else { return }
         scanGeneration = UUID()
         isScanning = true
         scanProgress = ScanProgress(
