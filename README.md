@@ -117,14 +117,13 @@ home folders; protected locations can still be added manually. Once a project is
 found, its contents are left for the actual scan. Registered Git worktrees are also
 suggested. There is no entry cap or timeout: results appear during discovery, and
 Stop Search keeps what has been found. You can use selected folders immediately.
-Workspace suggestions follow folder contents: at least two immediate project
-folders, no unrelated visible files or folders (README and license files are fine).
-Familiar container names and names ending in “Projects” can qualify with one project.
-Go module caches (pkg/mod) are excluded from project discovery. Mixed folders retain
-individual suggestions. Expand a workspace to choose projects separately, or use
-its menu to select a parent folder explicitly. Selecting a workspace covers future
-projects too; selecting its children covers only those projects. Live regrouping
-preserves unchecked choices.
+Workspace suggestions favor the shallowest eligible container: a recognizable
+workspace name, multiple independent Git repositories (including nested organization
+layouts), or project-bearing folders in at least half its directory branches.
+Ordinary notes and supporting files do not disqualify a workspace. Home itself,
+protected personal folders and dependency caches stay excluded. Expand a workspace
+to select individual projects; explicit choices survive live regrouping.
+See [the research and heuristic rationale](docs/workspace-discovery.md).
 
 
 The menu bar panel offers **Scan Now** and **Clean Build Output…**. Cleanup opens

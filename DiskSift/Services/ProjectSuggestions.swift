@@ -17,8 +17,8 @@ struct ProjectSuggestionResult: Sendable {
 }
 
 private enum ProjectSearchEvent: Sendable {
-    case project(URL, worktree: Bool)
-    case container(URL, children: Set<String>, mixed: Bool)
+    case project(URL, repository: Bool, worktree: Bool)
+    case container(URL, children: Set<String>, readable: Bool)
     case refresh
     case indexUnavailable
     case foldersUnavailable
@@ -29,8 +29,12 @@ struct ProjectSuggestions: Sendable {
     var locator = ProjectLocator()
     static let commonNames = ["Projects", "Developer", "Development", "Code", "src", "Source", "Repos", "Repositories"]
     static func isContainerName(_ name: String) -> Bool {
-        commonNames.contains { $0.caseInsensitiveCompare(name) == .orderedSame } ||
-            name.lowercased().hasSuffix("projects")
+        let name = name.lowercased()
+        let names = Set(commonNames.map { $0.lowercased() } + [
+            "work", "workspace", "workspaces", "dev", "git", "ghq", "clones", "opensource",
+            "learning", "research", "experiments", "testing", "clients", "playground", "sandbox"
+        ])
+        return names.contains(name) || name.hasSuffix("projects") || name.hasSuffix("research")
     }
 
     private static let pruned: Set<String> = [".git", "node_modules", "target", "build", "dist", ".next", ".build", ".turbo", ".terraform", ".venv", "venv", "vendor", ".cache", ".pytest_cache", ".ruff_cache", ".mypy_cache"]
@@ -109,13 +113,13 @@ struct ProjectSuggestions: Sendable {
                 (try? marker.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
         }
         guard hasMarker else { return false }
-        report(.project(url.standardizedFileURL, worktree: repository?.isLinkedWorktree == true))
+        report(.project(url.standardizedFileURL, repository: repository != nil, worktree: repository?.isLinkedWorktree == true))
         if let repository {
             for checkout in (try? repository.registeredWorktrees()) ?? [] {
                 try Task.checkCancellation()
                 guard allowed(checkout), let linked = GitRepository.at(checkout),
                       linked.commonDirectory.path == repository.commonDirectory.path else { continue }
-                report(.project(checkout.standardizedFileURL, worktree: linked.isLinkedWorktree))
+                report(.project(checkout.standardizedFileURL, repository: true, worktree: linked.isLinkedWorktree))
             }
         }
         return true
@@ -149,23 +153,21 @@ struct ProjectSuggestions: Sendable {
                     errorHandler: { _, _ in failed = true; return true }
                 ) else { report(.foldersUnavailable); continue }
                 var children = Set<String>()
-                var mixed = false
                 while let child = entries.nextObject() as? URL {
                     try Task.checkCancellation()
                     guard !child.lastPathComponent.hasPrefix(".") else { continue }
                     let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-                    if values?.isDirectory == true && values?.isSymbolicLink != true {
+                    if values?.isDirectory == true || values?.isSymbolicLink == true {
                         children.insert(child.standardizedFileURL.path)
-                    } else if !["readme", "readme.md", "readme.txt", "license", "license.md", "license.txt"].contains(child.lastPathComponent.lowercased()) {
-                        mixed = true
                     }
+                    if values == nil { failed = true }
                     guard let values,
                           values.isDirectory == true, values.isSymbolicLink != true,
                           allowed(child) else { continue }
                     next.append(child)
                 }
                 if failed { report(.foldersUnavailable) }
-                report(.container(folder, children: children, mixed: mixed || failed))
+                report(.container(folder, children: children, readable: !failed))
             }
             level = next
         }
@@ -189,47 +191,93 @@ struct ProjectSuggestions: Sendable {
 
 private struct CollectedProjects {
     let home: URL
-    var containers: [URL: (children: Set<String>, mixed: Bool)] = [:]
+    var containers: [URL: (children: Set<String>, readable: Bool)] = [:]
     var projects = Set<URL>()
+    var repositories = Set<URL>()
     var worktrees = Set<URL>()
     var indexUnavailable = false
     var foldersUnavailable = false
 
     mutating func accept(_ event: ProjectSearchEvent) {
         switch event {
-        case let .project(url, worktree):
+        case let .project(url, repository, worktree):
             let directory = URL(fileURLWithPath: url.standardizedFileURL.path, isDirectory: true)
             projects.insert(directory)
+            if repository { repositories.insert(directory) }
             if worktree { worktrees.insert(directory) }
-        case let .container(url, children, mixed):
-            containers[url.standardizedFileURL] = (children, mixed)
+        case let .container(url, children, readable):
+            containers[url.standardizedFileURL] = (children, readable)
         case .refresh: break
         case .indexUnavailable: indexUnavailable = true
         case .foldersUnavailable: foldersUnavailable = true
         }
     }
 
+    /// Remove nested modules without repeated URL canonicalization or pairwise scans.
+    private func outermost(_ urls: Set<URL>) -> [URL] {
+        let paths = Set(urls.map(\.path))
+        return urls.filter { url in
+            var parent = (url.path as NSString).deletingLastPathComponent
+            while parent != "/" && !parent.isEmpty {
+                if paths.contains(parent) { return false }
+                parent = (parent as NSString).deletingLastPathComponent
+            }
+            return true
+        }
+    }
+
     var result: ProjectSuggestionResult {
-        let projectPaths = Set(projects.map(\.path))
-        let workspaces = containers.compactMap { url, evidence -> URL? in
-            let minimum = ProjectSuggestions.isContainerName(url.lastPathComponent) ? 1 : 2
-            guard url.path != home.standardizedFileURL.path, !evidence.mixed,
-                  evidence.children.count >= minimum,
-                  evidence.children.isSubset(of: projectPaths) else { return nil }
-            return url
-        }.sorted { $0.path < $1.path }
-        // Group only inspected containers whose visible contents support the inference.
-        let ordered = projects.sorted { $0.pathComponents.count < $1.pathComponents.count }
-        var roots: [URL] = []
+        // Build ancestor evidence once per snapshot, proportional to project depth.
+        // Do not compare every discovered folder with every project.
+        let homePath = home.standardizedFileURL.path
+        let outerProjects = outermost(projects)
+        var projectsByContainer: [String: [URL]] = [:]
+        var branchesByContainer: [String: Set<String>] = [:]
+        var repositoriesByContainer: [String: Int] = [:]
+        func ancestors(of path: String, visit: (String, String) -> Void) {
+            var branch = path
+            var parent = (path as NSString).deletingLastPathComponent
+            while parent.hasPrefix(homePath + "/") {
+                visit(parent, branch)
+                branch = parent
+                parent = (parent as NSString).deletingLastPathComponent
+            }
+        }
+        for project in outerProjects {
+            ancestors(of: project.path) { parent, branch in
+                projectsByContainer[parent, default: []].append(project)
+                branchesByContainer[parent, default: []].insert(branch)
+            }
+        }
+        for repository in outermost(repositories) {
+            ancestors(of: repository.path) { parent, _ in
+                repositoriesByContainer[parent, default: 0] += 1
+            }
+        }
+        var workspaces: [String: URL] = [:]
+        for (url, evidence) in containers {
+            let path = url.path
+            guard evidence.readable, let found = projectsByContainer[path], !found.isEmpty else { continue }
+            let branches = branchesByContainer[path, default: []].intersection(evidence.children).count
+            let coverage = Double(branches) / Double(max(1, evidence.children.count))
+            let isHomeChild = (path as NSString).deletingLastPathComponent == homePath
+            let namedWorkspace = ProjectSuggestions.isContainerName(url.lastPathComponent)
+            let repositoryCluster = repositoriesByContainer[path, default: 0] >= 2
+            let mostlyProjects = coverage >= 0.5 && (isHomeChild || found.count >= 2)
+            if namedWorkspace || repositoryCluster || mostlyProjects { workspaces[path] = url }
+        }
         var grouped: [URL: [URL]] = [:]
-        for project in ordered {
-            let root = workspaces.first { PathSafety.contains(project, in: $0) } ??
-                roots.first { PathSafety.contains(project, in: $0) } ?? project
-            if grouped[root] == nil { roots.append(root) }
+        for project in outerProjects {
+            var root = project
+            // Ancestors are visited nearest first; the shallowest supported root wins.
+            ancestors(of: project.path) { parent, _ in
+                if let workspace = workspaces[parent] { root = workspace }
+            }
             grouped[root, default: []].append(project)
         }
         let suggestions = grouped.map { root, found in
-            ProjectSuggestion(url: root, projectURLs: found.sorted { $0.path < $1.path }, worktreeURLs: found.filter(worktrees.contains))
+            ProjectSuggestion(url: root, projectURLs: found.sorted { $0.path < $1.path },
+                              worktreeURLs: worktrees.filter { $0.path == root.path || $0.path.hasPrefix(root.path + "/") })
         }.sorted { $0.url.path < $1.url.path }
         return ProjectSuggestionResult(suggestions: suggestions, indexUnavailable: indexUnavailable, foldersUnavailable: foldersUnavailable)
     }

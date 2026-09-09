@@ -2,7 +2,7 @@ import XCTest
 @testable import DiskSift
 
 final class ProjectSuggestionsTests: XCTestCase {
-    func testSuggestionsGroupCommonFoldersButNotUnrelatedParents() throws {
+    func testSuggestionsGroupNamedWorkspacesAndExcludeProtectedFolders() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("HemdiffFind-\(UUID().uuidString)").standardizedFileURL
         defer { try? FileManager.default.removeItem(at: home) }
         func marker(_ path: String) throws -> URL {
@@ -19,8 +19,7 @@ final class ProjectSuggestionsTests: XCTestCase {
         let result = try ProjectSuggestions(home: home, locator: ProjectLocator(indexedPaths: { _ in [separate.path, personal.path] })).discover()
         XCTAssertEqual(result.suggestions.count, 2)
         XCTAssertEqual(result.suggestions.first { $0.url.lastPathComponent == "Projects" }?.projects, 2)
-        XCTAssertTrue(result.suggestions.contains { $0.url == separate.deletingLastPathComponent() })
-        XCTAssertFalse(result.suggestions.contains { $0.url == home.appendingPathComponent("Work") })
+        XCTAssertTrue(result.suggestions.contains { $0.url.path == home.appendingPathComponent("Work").path })
         XCTAssertFalse(result.indexUnavailable)
     }
 
@@ -58,8 +57,8 @@ extension ProjectSuggestionsTests {
             try Data().write(to: url.appendingPathComponent("package.json"))
         }
         let result = try ProjectSuggestions(home: home, locator: ProjectLocator(indexedPaths: { _ in [] })).discover()
-        XCTAssertEqual(Set(result.suggestions.map { $0.url.path }), [repository.path, deep.path])
-        XCTAssertEqual(result.suggestions.first { $0.url.path == repository.path }?.projects, 1)
+        XCTAssertEqual(Set(result.suggestions.map { $0.url.path }), [home.appendingPathComponent("Clients").path, home.appendingPathComponent("Experiments").path])
+        XCTAssertEqual(result.suggestions.first { $0.url.path == home.appendingPathComponent("Clients").path }?.projects, 1)
     }
 
     func testIndexedGitHeadAndDuplicateMarkers() throws {
@@ -91,18 +90,18 @@ extension ProjectSuggestionsTests {
         }))
         let task = Task {
             await finder.find { update in
-                if update.suggestions.contains(where: { $0.url.path == project.path }) { appeared.fulfill() }
+                if update.suggestions.contains(where: { $0.url.path == home.appendingPathComponent("Clients").path }) { appeared.fulfill() }
             }
         }
         await fulfillment(of: [appeared], timeout: 5)
         task.cancel()
         let stopped = await task.value
-        XCTAssertEqual(stopped.suggestions.map { $0.url.path }, [project.path])
+        XCTAssertEqual(stopped.suggestions.map { $0.url.path }, [home.appendingPathComponent("Clients").path])
     }
 }
 
 extension ProjectSuggestionsTests {
-    func testWorkspaceInferenceUsesContentsAndPreservesMixedFolders() throws {
+    func testRepositoryClustersTolerateSupportingFilesAndFolders() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("HemdiffFind-\(UUID().uuidString)").standardizedFileURL
         defer { try? FileManager.default.removeItem(at: home) }
         for folder in ["AutoProjects/first", "AutoProjects/second", "Mixed/first", "Mixed/second",
@@ -121,9 +120,9 @@ extension ProjectSuggestionsTests {
         XCTAssertTrue(workspace.isWorkspace)
         XCTAssertEqual(Set(workspace.projectURLs.map(\.lastPathComponent)), ["first", "second"])
         for folder in ["Mixed", "Projects", "Other", "Clients"] {
-            XCTAssertFalse(result.suggestions.contains { $0.url.path == home.appendingPathComponent(folder).path }, folder)
+            XCTAssertTrue(result.suggestions.contains { $0.url.path == home.appendingPathComponent(folder).path }, folder)
         }
-        XCTAssertTrue(result.suggestions.contains { $0.url.path == home.appendingPathComponent("Clients/solo").path })
+        XCTAssertFalse(result.suggestions.contains { $0.url.path == home.appendingPathComponent("Clients/solo").path })
         XCTAssertFalse(result.suggestions.contains { $0.url.path == home.path })
     }
 
@@ -152,8 +151,37 @@ extension ProjectSuggestionsTests {
         let cacheMarker = home.appendingPathComponent("go/pkg/mod/example.org/dependency@v1/go.mod").path
         let result = try ProjectSuggestions(home: home, locator: ProjectLocator(indexedPaths: { _ in [cacheMarker] })).discover()
         XCTAssertEqual(Set(result.suggestions.map { $0.url.path }), [
-            home.appendingPathComponent("AutoProjects").path, home.appendingPathComponent("Work/mod").path
+            home.appendingPathComponent("AutoProjects").path, home.appendingPathComponent("Work").path
         ])
         XCTAssertTrue(result.suggestions.first { $0.url.lastPathComponent == "AutoProjects" }?.isWorkspace == true)
+    }
+}
+
+extension ProjectSuggestionsTests {
+    func testShallowWorkspaceTheoryAcrossLayouts() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("HemdiffFind-\(UUID().uuidString)").standardizedFileURL
+        defer { try? FileManager.default.removeItem(at: home) }
+        func repo(_ path: String) throws {
+            let url = home.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.appendingPathComponent(".git/objects"), withIntermediateDirectories: true)
+            try Data("ref: refs/heads/main\n".utf8).write(to: url.appendingPathComponent(".git/HEAD"))
+        }
+        for path in ["MarketResearch/portfolio/guide", "MarketResearch/service-federation",
+                     "Learning/navier-stokes", "ghq/github.com/company/one", "ghq/github.com/company/two",
+                     "UnusualName/company/one", "UnusualName/company/two", "Monorepo",
+                     "Personal/old-project", "SinglePurpose/tool"] { try repo(path) }
+        for path in ["Personal/Photos", "Personal/Invoices", "Personal/Travel", "MarketResearch/notes"] {
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(path), withIntermediateDirectories: true)
+        }
+        try Data().write(to: home.appendingPathComponent("MarketResearch/plan.pdf"))
+        let nested = home.appendingPathComponent("Monorepo/packages/module")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data().write(to: nested.appendingPathComponent("package.json"))
+        let result = try ProjectSuggestions(home: home, locator: ProjectLocator(indexedPaths: { _ in [nested.appendingPathComponent("package.json").path] })).discover()
+        XCTAssertEqual(Set(result.suggestions.map { $0.url.path }), Set([
+            "MarketResearch", "Learning", "ghq", "UnusualName", "Monorepo", "Personal/old-project", "SinglePurpose"
+        ].map { home.appendingPathComponent($0).path }))
+        XCTAssertEqual(result.suggestions.first { $0.url.lastPathComponent == "Monorepo" }?.projects, 1)
+        XCTAssertFalse(result.suggestions.first { $0.url.lastPathComponent == "Monorepo" }!.isWorkspace)
     }
 }
