@@ -23,16 +23,20 @@ actor InventoryPages {
   private var expiresAt = Date.distantPast
   func store(_ value: ArtifactInventory, limit: Int) throws -> InventoryPage {
     guard try JSONOutput.data(value).count <= 32 * 1024 * 1024 else {
-      throw CommandError.invalid("Inventory exceeds the 32 MiB session limit; configure smaller roots")
+      throw CommandError.invalid(
+        "Inventory exceeds the 32 MiB session limit; configure smaller roots")
     }
-    inventory = value; snapshotID = UUID().uuidString; expiresAt = Date().addingTimeInterval(300)
+    inventory = value
+    snapshotID = UUID().uuidString
+    expiresAt = Date().addingTimeInterval(300)
     return try page(cursor: snapshotID + ":0", limit: limit)
   }
   func page(cursor: String, limit: Int) throws -> InventoryPage {
     let pieces = cursor.split(separator: ":", omittingEmptySubsequences: false)
     guard let inventory, Date() < expiresAt, pieces.count == 2,
       String(pieces[0]) == snapshotID, let offset = Int(pieces[1]), offset >= 0,
-      String(offset) == pieces[1], offset <= inventory.candidates.count + inventory.errors.count else {
+      String(offset) == pieces[1], offset <= inventory.candidates.count + inventory.errors.count
+    else {
       throw CommandError.invalid("Inventory cursor is expired or invalid; request a new inventory")
     }
     let total = inventory.candidates.count + inventory.errors.count
@@ -43,9 +47,11 @@ actor InventoryPages {
     let errorEnd = max(0, end - inventory.candidates.count)
     return InventoryPage(
       hostID: inventory.hostID, snapshotID: snapshotID, expiresAt: expiresAt,
-      candidates: Array(inventory.candidates[candidateStart..<candidateEnd]), totalCandidates: inventory.candidates.count,
+      candidates: Array(inventory.candidates[candidateStart..<candidateEnd]),
+      totalCandidates: inventory.candidates.count,
       totalErrors: inventory.errors.count,
       nextCursor: end < total ? snapshotID + ":\(end)" : nil,
-      directoriesVisited: inventory.directoriesVisited, errors: Array(inventory.errors[errorStart..<errorEnd]), cancelled: inventory.cancelled)
+      directoriesVisited: inventory.directoriesVisited,
+      errors: Array(inventory.errors[errorStart..<errorEnd]), cancelled: inventory.cancelled)
   }
 }

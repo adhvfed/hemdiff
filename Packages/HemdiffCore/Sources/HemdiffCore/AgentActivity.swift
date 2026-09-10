@@ -73,7 +73,10 @@ struct HostCommand {
 /// Best-effort host observation, combined with a quiet period and recursive revalidation.
 /// This does not prove that a build cannot start after inspection.
 public struct HostArtifactActivityChecker: ArtifactActivityChecking {
-  public init() {}
+  private let processDirectory: URL
+  public init() { processDirectory = URL(fileURLWithPath: "/proc") }
+  // Injectable only inside the package for process-observation fixtures.
+  init(processDirectory: URL) { self.processDirectory = processDirectory }
   public func assess(project: URL, artifact: URL) throws -> ActivityAssessment {
     try assess(project: project, artifact: artifact, cancelled: { false })
   }
@@ -84,7 +87,7 @@ public struct HostArtifactActivityChecker: ArtifactActivityChecking {
     let project = PathSafety.physicalSystemPath(project)
     let artifact = PathSafety.physicalSystemPath(artifact)
     #if os(Linux)
-      let proc = URL(fileURLWithPath: "/proc")
+      let proc = processDirectory
       guard let entries = try? FileManager.default.contentsOfDirectory(atPath: proc.path) else {
         return .init(state: .unknown, detail: "Process filesystem is unavailable")
       }
@@ -94,12 +97,27 @@ public struct HostArtifactActivityChecker: ArtifactActivityChecking {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: process.path),
           (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == hmd_uid()
         else { continue }
+        let command =
+          (try? String(contentsOf: process.appendingPathComponent("comm"), encoding: .utf8))?
+          .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard
           let descriptors = try? FileManager.default.contentsOfDirectory(
             atPath: process.appendingPathComponent("fd").path)
         else {
+          let status =
+            (try? String(contentsOf: process.appendingPathComponent("status"), encoding: .utf8))
+            ?? ""
+          let state = status.split(separator: "\n").first { $0.hasPrefix("State:") }?
+            .split(whereSeparator: { $0 == " " || $0 == "\t" }).dropFirst().first
+          // Zombies have no open descriptors. Authentication supervisors commonly
+          // remain owned by this UID but deliberately deny ptrace/proc inspection.
+          // Do not let those OS helpers make every unrelated workspace uncleanable.
+          if state == "Z" || ["(sd-pam)", "sshd", "sshd-session"].contains(command) { continue }
           if FileManager.default.fileExists(atPath: process.path) {
-            return .init(state: .unknown, detail: "Cannot inspect a process owned by this user")
+            return .init(
+              state: .unknown,
+              detail: "Cannot inspect process \(command.isEmpty ? pid : command) owned by this user"
+            )
           }
           continue
         }
@@ -111,9 +129,6 @@ public struct HostArtifactActivityChecker: ArtifactActivityChecking {
             return .init(state: .busy, detail: "A process has build output open")
           }
         }
-        let command =
-          (try? String(contentsOf: process.appendingPathComponent("comm"), encoding: .utf8))?
-          .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if let cwd = try? FileManager.default.destinationOfSymbolicLink(
           atPath: process.appendingPathComponent("cwd").path),
           contains(cwd, artifact) || (knownBuildCommand(command) && contains(cwd, project))

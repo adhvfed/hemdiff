@@ -1,10 +1,26 @@
 import Foundation
 import XCTest
+
 @testable import HemdiffAgentKit
 
 @MainActor final class WorkerTests: XCTestCase {
+  func testParallelReadsQueueInsteadOfReturningBusy() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "hemdiff-worker-" + UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let worker = ServiceWorker(directory: directory)
+    async let first = worker.run { service, _ in
+      Thread.sleep(forTimeInterval: 0.04)
+      return try service.status().hostID
+    }
+    async let second = worker.run { service, _ in try service.inventory().hostID }
+    let hosts = try await [first, second]
+    XCTAssertEqual(hosts[0], hosts[1])
+    await worker.shutdown()
+  }
   func testRequestCancellationReachesSynchronousWork() async throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("hemdiff-worker-\(UUID())")
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "hemdiff-worker-\(UUID())")
     defer { try? FileManager.default.removeItem(at: directory) }
     let worker = ServiceWorker(directory: directory)
     let started = CancellationFlag()
@@ -25,10 +41,12 @@ import XCTest
     await worker.shutdown()
   }
   func testDisconnectDrainsAndPreventsNewWork() async throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("hemdiff-worker-\(UUID())")
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "hemdiff-worker-\(UUID())")
     defer { try? FileManager.default.removeItem(at: directory) }
     let worker = ServiceWorker(directory: directory)
-    let started = CancellationFlag(), finished = CancellationFlag()
+    let started = CancellationFlag()
+    let finished = CancellationFlag()
     let work = Task {
       try await worker.run { _, cancelled in
         started.cancel()
@@ -42,7 +60,9 @@ import XCTest
     await worker.shutdown()
     XCTAssertTrue(finished.cancelled)
     _ = try await work.value
-    do { _ = try await worker.run { _, _ in true }; XCTFail("Accepted work after disconnect") }
-    catch is CancellationError { }
+    do {
+      _ = try await worker.run { _, _ in true }
+      XCTFail("Accepted work after disconnect")
+    } catch is CancellationError {}
   }
 }

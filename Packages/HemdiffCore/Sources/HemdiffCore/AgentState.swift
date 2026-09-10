@@ -62,7 +62,11 @@ final class AgentState {
   func exists(_ name: String) -> Bool { name.withCString { hmd_exists(directory.fd, $0) != 0 } }
   func read<T: Decodable>(_ name: String) throws -> T {
     var count = 0
-    guard let pointer = name.withCString({ hmd_read(directory.fd, $0, &count, name.hasSuffix(".plist") ? 128_000_000 : 32_000_000) }) else {
+    guard
+      let pointer = name.withCString({
+        hmd_read(directory.fd, $0, &count, name.hasSuffix(".plist") ? 128_000_000 : 32_000_000)
+      })
+    else {
       throw AgentServiceError.refused("State record missing, too large, or insecure: \(name)")
     }
     defer { hmd_free(pointer) }
@@ -89,7 +93,8 @@ final class AgentState {
       let manifests = try directory.names().filter { $0.hasSuffix(".plan.plist") }
       let retainedBytes = try manifests.reduce(UInt64(0)) { $0 + (try directory.stat($1).size) }
       guard manifests.count < 32, retainedBytes + UInt64(data.count) <= 256_000_000 else {
-        throw AgentServiceError.refused("Pending plan storage is full; execute existing plans or let them expire")
+        throw AgentServiceError.refused(
+          "Pending plan storage is full; execute existing plans or let them expire")
       }
     }
     guard
@@ -110,10 +115,37 @@ final class AgentState {
   func expirePlans(now: Date) throws {
     for name in try directory.names() where name.hasSuffix(".plan.plist") {
       let id = String(name.dropLast(".plan.plist".count))
-      guard UUID(uuidString: id) != nil, !exists(id + ".started.json") else { continue }
+      guard UUID(uuidString: id) != nil else { continue }
+      if exists(id + ".receipt.json") {
+        let _: CleanupReceipt = try read(id + ".receipt.json")
+        try discardManifest(id)
+        continue
+      }
       let stored: StoredCleanupPlan = try read(name)
-      if stored.plan.expiresAt <= now { try discardManifest(id) }
+      guard stored.plan.id == id else { throw AgentServiceError.refused("Plan identity mismatch") }
+      if exists(id + ".started.json") {
+        _ = try recoverInterruptedPlan(stored.plan)
+      } else if stored.plan.expiresAt <= now {
+        try discardManifest(id)
+      }
     }
+  }
+  // Called only while holding this state's operation lock: a remaining start
+  // journal therefore cannot belong to an active execution in this state.
+  func recoverInterruptedPlan(_ plan: CleanupPlan) throws -> CleanupReceipt {
+    try validateID(plan.id)
+    let receipt = CleanupReceipt(
+      planID: plan.id, hostID: plan.hostID, finishedAt: Date(),
+      outcome: .interrupted, plannedArtifactIDs: plan.candidates.map(\.id), removedArtifactIDs: [],
+      estimatedRemovedBytes: 0,
+      failures: [
+        "execution":
+          "Previous execution was interrupted; inspect and prepare a new plan. No deletion was retried."
+      ],
+      accountingComplete: false)
+    try write(receipt, to: plan.id + ".receipt.json")
+    try? discardManifest(plan.id)
+    return receipt
   }
   func validateID(_ id: String) throws {
     guard let parsed = UUID(uuidString: id), parsed.uuidString == id.uppercased() else {

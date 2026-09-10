@@ -63,6 +63,20 @@ class Contract(unittest.TestCase):
         result = subprocess.run([BINARY, '--state-directory', str(self.state), *args], capture_output=True, timeout=45)
         self.assertEqual(result.returncode == 0, success, result.stderr.decode())
         return json.loads(result.stdout if success else result.stderr)
+    def test_parallel_status_and_inventory_are_serialized(self):
+        client = Client(self.state)
+        try:
+            for request_id, name in [(80, 'status'), (81, 'inventory')]:
+                client.send({'jsonrpc': '2.0', 'id': request_id, 'method': 'tools/call', 'params': {'name': name, 'arguments': {}}})
+            answers = {}
+            while len(answers) < 2:
+                message = client.messages.get(timeout=45)
+                self.assertIsNotNone(message)
+                if message.get('id') in (80, 81): answers[message['id']] = message['result']
+            for answer in answers.values(): self.assertFalse(answer.get('isError'), answer)
+            self.assertEqual(answers[80]['structuredContent']['hostID'], answers[81]['structuredContent']['hostID'])
+        finally: client.close()
+
     def test_help_has_no_state_side_effect(self):
         for option in ['--help', '--version']:
             result = subprocess.run([BINARY, '--state-directory', str(self.state), option], capture_output=True)
@@ -147,6 +161,30 @@ class Contract(unittest.TestCase):
             client.send({'jsonrpc': '2.0', 'method': 'notifications/cancelled', 'params': {'requestId': 99, 'reason': 'test cancellation'}})
         finally: client.close()
         self.assertEqual(len(list(project.iterdir())), 3000)
+
+    def test_cancelled_request_flood_with_stalled_stdout_is_bounded(self):
+        process = subprocess.Popen([BINARY, '--state-directory', str(self.state), 'mcp'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            initialize = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-03-26', 'capabilities': {}, 'clientInfo': {'name': 'flood-test', 'version': '1'}}}
+            process.stdin.write(json.dumps(initialize).encode() + b'\n'); process.stdin.flush()
+            self.assertIn('result', json.loads(process.stdout.readline()))
+            process.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
+            try:
+                # The first error reply fills stdout; subsequent replies must remain bounded.
+                for request_id in range(2, 102):
+                    method = ('x' * 100000) if request_id == 2 else 'unknown'
+                    request = {'jsonrpc': '2.0', 'id': request_id, 'method': method}
+                    cancel = {'jsonrpc': '2.0', 'method': 'notifications/cancelled', 'params': {'requestId': request_id}}
+                    process.stdin.write(json.dumps(request).encode() + b'\n' + json.dumps(cancel).encode() + b'\n')
+                    process.stdin.flush()
+            except BrokenPipeError: pass
+            process.wait(timeout=10)
+            self.assertFalse(self.state.exists())
+        finally:
+            if process.poll() is None: process.kill(); process.wait()
+            try: process.stdin.close()
+            except BrokenPipeError: pass
+            process.stdout.close(); process.stderr.close()
 
     def test_oversized_frame_terminates_without_state_write(self):
         process = subprocess.Popen([BINARY, '--state-directory', str(self.state), 'mcp'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

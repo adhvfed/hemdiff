@@ -48,6 +48,8 @@ public struct CleanupReceipt: Codable, Sendable, Equatable {
   public let hostID: String
   public let finishedAt: Date
   public let outcome: Outcome
+  /// Present on new receipts; optional to read receipts from earlier development builds.
+  public let plannedArtifactIDs: [String]?
   public let removedArtifactIDs: [String]
   public let estimatedRemovedBytes: Int64
   public let failures: [String: String]

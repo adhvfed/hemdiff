@@ -10,10 +10,10 @@ truth for artifact types and classification rules.
   accepted only on macOS and only with their expected destinations.
 - `ArtifactContainers` provides canonical known-container paths without a
   dependency on app discovery services.
-- `ArtifactReclaimer` preserves the GUI's existing validation/reclamation API.
-  Its directory identity check does **not** detect changes inside the directory;
-  it must not be treated as sufficient authorization or concurrency protection
-  for unattended agent cleanup.
+- `ArtifactReclaimer` validates exact artifact paths and ownership markers.
+- `InteractiveCleanup` captures an opaque recursive plan before GUI confirmation,
+  then revalidates and removes through the same engine as agent cleanup. The old
+  reclaim-without-review method no longer exists.
 
 UI, project discovery, content indexing, and application preferences remain in
 the macOS target. Additional host services should depend on this package instead
@@ -23,7 +23,7 @@ Run `swift test --package-path Packages/HemdiffCore` to test the shared rules.
 
 ## Headless artifact service
 
-`AgentArtifactService` is the single authority for the upcoming CLI/MCP adapters.
+`AgentArtifactService` is the single authority for the CLI/MCP adapters.
 Its synchronous APIs are intended to run on a worker rather than the UI thread:
 
 - `status()` returns the random public host ID and configured roots.
@@ -77,7 +77,7 @@ covers completed artifact removals only, not an assertion that no other files ch
   Xcode's known-container cleanup is not yet exposed through the agent service.
 - Recursive manifests remain in memory. Private binary plans are capped at 128 MB
   each and 32 pending plans / 256 MB aggregate. Oversized plans fail before mutation.
-  Completed manifests are discarded after durable receipts; expired unused plans
+  Terminal manifests are discarded after durable receipts; expired unused plans
   are discarded when preparing another plan. Receipts remain available.
 - Planning resolves only selected IDs through configured-root, shared-rule, mount,
   and ancestor-exclusion checks. It does not rescan unrelated workspaces.
@@ -94,3 +94,10 @@ Service tests exercise grants/revocation, stale contents/markers/directories/lin
 tracked/nested version control, private state, machine binding, concurrent locks,
 interruption/cancellation, subprocess deadlines, real busy-process detection,
 hardlinks, special files, partial preservation and durable receipts.
+
+A private per-user `CleanupExecutionLock` serializes destructive execution across
+the GUI and all agent state directories. Preparing another plan also recovers
+abandoned execution journals into terminal receipts and frees their manifests.
+Receipts retain the original candidate IDs alongside completed IDs and failures.
+Expiry is checked again after inspection, immediately before each artifact starts
+deleting. A running artifact removal is not interrupted merely because time expires.

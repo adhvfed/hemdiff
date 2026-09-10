@@ -18,7 +18,7 @@
 #include <signal.h>
 
 #ifdef __linux__
-#include <linux/stat.h>
+#include "LinuxStatx.h"
 #include <sys/syscall.h>
 #include <sys/sysmacros.h>
 #endif
@@ -52,7 +52,7 @@ static void convert(struct stat value, hmd_stat *out) {
 // Read all fields in one statx operation; older kernels fail closed.
 #ifdef __linux__
 static int inspect_at(int fd, const char *name, int flags, hmd_stat *out) {
-    struct statx value;
+    hmd_kernel_statx value;
     memset(&value, 0, sizeof(value));
     if (syscall(SYS_statx, fd, name, flags, STATX_BASIC_STATS | STATX_MNT_ID, &value)) return -1;
     if ((value.stx_mask & (STATX_BASIC_STATS | STATX_MNT_ID)) != (STATX_BASIC_STATS | STATX_MNT_ID)) {
@@ -201,9 +201,27 @@ int hmd_lock(int directory) {
     return fd;
 }
 
+static int random_nonce(uint64_t *value) {
+#ifdef __APPLE__
+    arc4random_buf(value, sizeof(*value));
+    return 0;
+#else
+    size_t offset = 0;
+    while (offset < sizeof(*value)) {
+        ssize_t count = syscall(SYS_getrandom, (char *)value + offset, sizeof(*value) - offset, 0);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) return -1;
+        offset += (size_t)count;
+    }
+    return 0;
+#endif
+}
+
 int hmd_write(int directory, const char *name, const void *data, size_t length) {
     char temporary[96];
-    snprintf(temporary, sizeof(temporary), ".write-%d-%u", getpid(), arc4random());
+    uint64_t nonce;
+    if (random_nonce(&nonce)) return -1;
+    snprintf(temporary, sizeof(temporary), ".write-%d-%llu", getpid(), (unsigned long long)nonce);
     int fd = openat(directory, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
     if (fd < 0) return -1;
     size_t written = 0;

@@ -1,12 +1,13 @@
 import Foundation
-import MCP
 import Logging
+import MCP
+
 #if canImport(Darwin)
-import Darwin
+  import Darwin
 #elseif canImport(Glibc)
-import Glibc
+  import Glibc
 #elseif canImport(Musl)
-import Musl
+  import Musl
 #endif
 
 /// MCP framing only; all JSON-RPC and MCP semantics belong to the official SDK.
@@ -22,6 +23,7 @@ actor BoundedStdio: Transport {
   private let onEnd: @Sendable () async -> Void
   private var outputFlags: Int32?
   private var sending = false
+  private var pendingSends = 0
   private var outstandingRequests: Set<ID> = []
   static let maximumFrame = 1_048_576
 
@@ -39,22 +41,27 @@ actor BoundedStdio: Transport {
     outputFlags = flags
     let stopped = self.stopped
     reader = Task.detached { [weak self] in
-      var frame = Data(), bytes = [UInt8](repeating: 0, count: 8192)
+      var frame = Data()
+      var bytes = [UInt8](repeating: 0, count: 8192)
       while !stopped.cancelled && !Task.isCancelled {
         var descriptor = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)
         let ready = poll(&descriptor, 1, 100)
         if ready < 0 {
           if errno == EINTR { continue }
-          await self?.finish(CommandError.invalid("stdin read failed")); return
+          await self?.finish(CommandError.invalid("stdin read failed"))
+          return
         }
         if ready == 0 { continue }
         let count = read(STDIN_FILENO, &bytes, bytes.count)
         if count == 0 {
-          await self?.finish(frame.isEmpty ? nil : CommandError.invalid("Incomplete MCP frame at EOF")); return
+          await self?.finish(
+            frame.isEmpty ? nil : CommandError.invalid("Incomplete MCP frame at EOF"))
+          return
         }
         if count < 0 {
           if errno == EINTR || errno == EAGAIN { continue }
-          await self?.finish(CommandError.invalid("stdin read failed")); return
+          await self?.finish(CommandError.invalid("stdin read failed"))
+          return
         }
         for byte in bytes.prefix(count) {
           if byte == 10 {
@@ -64,7 +71,8 @@ actor BoundedStdio: Transport {
             }
           } else {
             guard frame.count < Self.maximumFrame else {
-              await self?.finish(CommandError.invalid("MCP frame exceeds 1 MiB")); return
+              await self?.finish(CommandError.invalid("MCP frame exceeds 1 MiB"))
+              return
             }
             frame.append(byte)
           }
@@ -79,15 +87,20 @@ actor BoundedStdio: Transport {
     // backlog from the transport into handler Tasks while stdout is stalled.
     if let json = try? JSONDecoder().decode(Value.self, from: frame) {
       guard case let .object(object) = json else {
-        await finish(CommandError.invalid("MCP requires one message object per frame")); return false
+        await finish(CommandError.invalid("MCP requires one message object per frame"))
+        return false
       }
       if object["method"] != nil, let requestID = Self.id(object["id"]) {
         guard outstandingRequests.count < 16, !outstandingRequests.contains(requestID) else {
-          await finish(CommandError.invalid("Too many outstanding requests or duplicate request ID")); return false
+          await finish(
+            CommandError.invalid("Too many outstanding requests or duplicate request ID"))
+          return false
         }
         outstandingRequests.insert(requestID)
       } else if object["method"]?.stringValue == "notifications/cancelled",
-        let parameters = object["params"]?.objectValue, let requestID = Self.id(parameters["requestId"]) {
+        let parameters = object["params"]?.objectValue,
+        let requestID = Self.id(parameters["requestId"])
+      {
         // Cancellation releases the client's slot; the SDK cancels the handler,
         // while ServiceWorker still admits at most one undrained filesystem job.
         outstandingRequests.remove(requestID)
@@ -95,46 +108,81 @@ actor BoundedStdio: Transport {
     }
     switch continuation.yield(frame) {
     case .enqueued: return true
-    case .dropped: await finish(CommandError.invalid("MCP input queue overflow")); return false
-    case .terminated: await finish(nil); return false
-    @unknown default: await finish(CommandError.invalid("MCP transport closed")); return false
+    case .dropped:
+      await finish(CommandError.invalid("MCP input queue overflow"))
+      return false
+    case .terminated:
+      await finish(nil)
+      return false
+    @unknown default:
+      await finish(CommandError.invalid("MCP transport closed"))
+      return false
     }
   }
   private func finish(_ error: Swift.Error?) async {
     guard !ended else { return }
-    ended = true; stopped.cancel(); reader?.cancel()
+    ended = true
+    stopped.cancel()
+    reader?.cancel()
     continuation.finish(throwing: error)
     await onEnd()
   }
   func disconnect() async {
     await finish(nil)
-    if let outputFlags { _ = fcntl(STDOUT_FILENO, F_SETFL, outputFlags); self.outputFlags = nil }
+    if let outputFlags {
+      _ = fcntl(STDOUT_FILENO, F_SETFL, outputFlags)
+      self.outputFlags = nil
+    }
   }
   func receive() -> AsyncThrowingStream<Data, Swift.Error> { stream }
   func send(_ data: Data) async throws {
+    // Cancellation may finish an SDK handler before its outer reply task drains.
+    // Bound replies independently of incoming request IDs.
+    guard pendingSends < 16 else {
+      await finish(CommandError.invalid("MCP output queue overflow"))
+      throw CommandError.invalid("MCP output queue overflow")
+    }
+    pendingSends += 1
+    defer { pendingSends -= 1 }
     // SDK handlers can send concurrently. Serialize complete frames, never bytes.
     while sending && !ended { try await Task.sleep(for: .milliseconds(5)) }
     guard !ended else { throw CancellationError() }
-    guard data.count <= 16 * Self.maximumFrame else { throw CommandError.invalid("MCP response exceeds 16 MiB; select fewer candidates") }
-    sending = true; defer { sending = false }
+    guard data.count <= 16 * Self.maximumFrame else {
+      throw CommandError.invalid("MCP response exceeds 16 MiB; select fewer candidates")
+    }
+    sending = true
+    defer { sending = false }
     let bytes = Array(data) + [10]
     var offset = 0
     let deadline = ContinuousClock.now.advanced(by: .seconds(30))
-    while offset < bytes.count {
-      guard !ended, !Task.isCancelled else { throw CancellationError() }
-      let written = bytes.withUnsafeBytes { buffer in
-        write(STDOUT_FILENO, buffer.baseAddress!.advanced(by: offset), bytes.count - offset)
+    do {
+      while offset < bytes.count {
+        guard !ended, !Task.isCancelled else { throw CancellationError() }
+        let written = bytes.withUnsafeBytes { buffer in
+          write(STDOUT_FILENO, buffer.baseAddress!.advanced(by: offset), bytes.count - offset)
+        }
+        if written > 0 {
+          offset += written
+          continue
+        }
+        if written < 0 && errno == EINTR { continue }
+        if written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)
+          && ContinuousClock.now < deadline
+        {
+          try await Task.sleep(for: .milliseconds(10))
+          continue
+        }
+        await finish(CommandError.invalid("stdout closed or stalled"))
+        throw CommandError.invalid("stdout closed or stalled")
       }
-      if written > 0 { offset += written; continue }
-      if written < 0 && errno == EINTR { continue }
-      if written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) && ContinuousClock.now < deadline {
-        try await Task.sleep(for: .milliseconds(10)); continue
-      }
-      await finish(CommandError.invalid("stdout closed or stalled"))
-      throw CommandError.invalid("stdout closed or stalled")
+    } catch {
+      // A cancelled send must not leave half a JSON frame for the next response.
+      if offset > 0 { await finish(error) }
+      throw error
     }
     if let object = try? JSONDecoder().decode([String: Value].self, from: data),
-      let requestID = Self.id(object["id"]), object["result"] != nil || object["error"] != nil {
+      let requestID = Self.id(object["id"]), object["result"] != nil || object["error"] != nil
+    {
       outstandingRequests.remove(requestID)
     }
   }

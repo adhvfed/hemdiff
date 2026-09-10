@@ -7,13 +7,15 @@ public enum CleanupExecutionLock {
   public static var defaultDirectory: URL {
     let home = FileManager.default.homeDirectoryForCurrentUser
     #if os(macOS)
-    return home.appendingPathComponent("Library/Application Support/Hemdiff/Coordination", isDirectory: true)
+      return home.appendingPathComponent(
+        "Library/Application Support/Hemdiff/Coordination", isDirectory: true)
     #else
-    return home.appendingPathComponent(".local/state/hemdiff-coordination", isDirectory: true)
+      return home.appendingPathComponent(".local/state/hemdiff-coordination", isDirectory: true)
     #endif
   }
 
-  public static func withLock<T>(at url: URL = defaultDirectory, _ work: () throws -> T) throws -> T {
+  public static func withLock<T>(at url: URL = defaultDirectory, _ work: () throws -> T) throws -> T
+  {
     guard !PathSafety.hasSymbolicLink(in: url) else {
       throw AgentServiceError.refused("Cleanup coordination directory contains a symbolic link")
     }
@@ -25,7 +27,8 @@ public enum CleanupExecutionLock {
     let directory = DirectoryDescriptor(ownedFD: directoryFD)
     let lockFD = hmd_lock(directory.fd)
     guard lockFD >= 0 else {
-      throw AgentServiceError.refused("Another Hemdiff cleanup is running, or the coordination lock is insecure")
+      throw AgentServiceError.refused(
+        "Another Hemdiff cleanup is running, or the coordination lock is insecure")
     }
     defer { _ = hmd_close(lockFD) }
     return try work()

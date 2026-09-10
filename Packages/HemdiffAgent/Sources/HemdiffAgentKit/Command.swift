@@ -3,14 +3,23 @@ import HemdiffCore
 
 public enum CommandError: Error, LocalizedError {
   case invalid(String)
-  public var errorDescription: String? { if case let .invalid(message) = self { message } else { nil } }
+  public var errorDescription: String? {
+    if case let .invalid(message) = self { message } else { nil }
+  }
 }
 
 public struct Command: Sendable {
   public enum Operation: Equatable, Sendable {
-    case help, version, status, rootsList, rootsAdd(String), rootsRemove(String)
-    case grant(String, Set<ArtifactKind>), revoke(String, Set<ArtifactKind>?)
-    case inventory, plan([String]), execute(String, String), receipt(String), mcp
+    case help, version, status, rootsList
+    case rootsAdd(String)
+    case rootsRemove(String)
+    case grant(String, Set<ArtifactKind>)
+    case revoke(String, Set<ArtifactKind>?)
+    case inventory
+    case plan([String])
+    case execute(String, String)
+    case receipt(String)
+    case mcp
   }
   public let stateDirectory: URL?
   public let operation: Operation
@@ -50,7 +59,8 @@ public struct Command: Sendable {
       guard args.count >= 3, args[1].hasPrefix("/"), args[1].utf8.count <= 4096 else {
         throw CommandError.invalid("--state-directory requires an absolute path and a command")
       }
-      state = URL(fileURLWithPath: args[1]); args.removeFirst(2)
+      state = URL(fileURLWithPath: args[1])
+      args.removeFirst(2)
     }
     stateDirectory = state
     func fail() -> CommandError { .invalid("Invalid command or arguments. Run hemdiff --help.") }
@@ -64,26 +74,53 @@ public struct Command: Sendable {
       guard Set(parsed).count == parsed.count else { throw fail() }
       return Set(parsed)
     }
-    guard args.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 4096 }), args.count <= 260 else { throw fail() }
+    guard args.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 4096 }), args.count <= 260 else {
+      throw fail()
+    }
     switch args.first {
-    case nil, "--help", "help": guard args.count <= 1 else { throw fail() }; operation = .help
-    case "--version": guard args.count == 1 else { throw fail() }; operation = .version
-    case "status": guard args.count == 1 else { throw fail() }; operation = .status
-    case "inventory": guard args.count == 1 else { throw fail() }; operation = .inventory
-    case "mcp": guard args.count == 1 else { throw fail() }; operation = .mcp
+    case nil, "--help", "help":
+      guard args.count <= 1 else { throw fail() }
+      operation = .help
+    case "--version":
+      guard args.count == 1 else { throw fail() }
+      operation = .version
+    case "status":
+      guard args.count == 1 else { throw fail() }
+      operation = .status
+    case "inventory":
+      guard args.count == 1 else { throw fail() }
+      operation = .inventory
+    case "mcp":
+      guard args.count == 1 else { throw fail() }
+      operation = .mcp
     case "roots":
-      if args == ["roots", "list"] { operation = .rootsList }
-      else if args.count == 3 && args[1] == "add" && args[2].hasPrefix("/") { operation = .rootsAdd(args[2]) }
-      else if args.count == 3 && args[1] == "remove" { operation = .rootsRemove(args[2]) }
-      else { throw fail() }
+      if args == ["roots", "list"] {
+        operation = .rootsList
+      } else if args.count == 3 && args[1] == "add" && args[2].hasPrefix("/") {
+        operation = .rootsAdd(args[2])
+      } else if args.count == 3 && args[1] == "remove" {
+        operation = .rootsRemove(args[2])
+      } else {
+        throw fail()
+      }
     case "permissions":
       guard args.count >= 3 else { throw fail() }
-      if args[1] == "grant", args.count >= 4 { operation = .grant(args[2], try kinds(args.dropFirst(3))) }
-      else if args[1] == "revoke" { operation = .revoke(args[2], args.count == 3 ? nil : try kinds(args.dropFirst(3))) }
-      else { throw fail() }
-    case "plan": guard args.count >= 2 && args.count <= 257 else { throw fail() }; operation = .plan(Array(args.dropFirst()))
-    case "execute": guard args.count == 4 && args[2] == "--host" else { throw fail() }; operation = .execute(args[1], args[3])
-    case "receipt": guard args.count == 2 else { throw fail() }; operation = .receipt(args[1])
+      if args[1] == "grant", args.count >= 4 {
+        operation = .grant(args[2], try kinds(args.dropFirst(3)))
+      } else if args[1] == "revoke" {
+        operation = .revoke(args[2], args.count == 3 ? nil : try kinds(args.dropFirst(3)))
+      } else {
+        throw fail()
+      }
+    case "plan":
+      guard args.count >= 2 && args.count <= 257 else { throw fail() }
+      operation = .plan(Array(args.dropFirst()))
+    case "execute":
+      guard args.count == 4 && args[2] == "--host" else { throw fail() }
+      operation = .execute(args[1], args[3])
+    case "receipt":
+      guard args.count == 2 else { throw fail() }
+      operation = .receipt(args[1])
     default: throw fail()
     }
   }
@@ -91,7 +128,8 @@ public struct Command: Sendable {
 
 public enum JSONOutput {
   public static func data<T: Encodable>(_ value: T) throws -> Data {
-    let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
     encoder.dateEncodingStrategy = .iso8601
     return try encoder.encode(value)
   }

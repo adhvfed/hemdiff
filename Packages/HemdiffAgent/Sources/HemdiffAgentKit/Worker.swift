@@ -16,6 +16,7 @@ public actor ServiceWorker {
   private let directory: URL
   private let session = CancellationFlag()
   private var active = false
+  private var waiting: [UUID] = []
   private var current: CancellationFlag?
   public init(directory: URL) { self.directory = directory }
 
@@ -23,13 +24,43 @@ public actor ServiceWorker {
     _ body: @escaping @Sendable (AgentArtifactService, @Sendable () -> Bool) throws -> T
   ) async throws -> T {
     guard !session.cancelled else { throw CancellationError() }
-    guard !active else { throw CommandError.invalid("Hemdiff is busy; retry after the current operation finishes") }
+    guard waiting.count < 8 else {
+      throw CommandError.invalid(
+        "Hemdiff's operation queue is full; retry after current work finishes")
+    }
+    let ticket = UUID()
+    waiting.append(ticket)
+    let deadline = ContinuousClock.now.advanced(by: .seconds(30))
+    do {
+      while active || waiting.first != ticket {
+        try Task.checkCancellation()
+        guard !session.cancelled else { throw CancellationError() }
+        guard ContinuousClock.now < deadline else {
+          throw CommandError.invalid(
+            "Timed out waiting for the current Hemdiff operation; retry later")
+        }
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      try Task.checkCancellation()
+      guard !session.cancelled else { throw CancellationError() }
+    } catch {
+      waiting.removeAll { $0 == ticket }
+      throw error
+    }
+    waiting.removeFirst()
     active = true
-    let request = CancellationFlag(); current = request
-    let session = self.session, directory = self.directory
-    defer { active = false; current = nil }
+    let request = CancellationFlag()
+    current = request
+    let session = self.session
+    let directory = self.directory
+    defer {
+      active = false
+      current = nil
+    }
     let task = Task.detached {
-      let cancelled: @Sendable () -> Bool = { request.cancelled || session.cancelled || Task.isCancelled }
+      let cancelled: @Sendable () -> Bool = {
+        request.cancelled || session.cancelled || Task.isCancelled
+      }
       if cancelled() { throw CancellationError() }
       let service = try AgentArtifactService(stateDirectory: directory)
       return try body(service, cancelled)
@@ -37,11 +68,13 @@ public actor ServiceWorker {
     return try await withTaskCancellationHandler {
       try await task.value
     } onCancel: {
-      request.cancel(); task.cancel()
+      request.cancel()
+      task.cancel()
     }
   }
   public func shutdown() async {
-    session.cancel(); current?.cancel()
-    while active { try? await Task.sleep(for: .milliseconds(20)) }
+    session.cancel()
+    current?.cancel()
+    while active || !waiting.isEmpty { try? await Task.sleep(for: .milliseconds(20)) }
   }
 }
