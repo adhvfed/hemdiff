@@ -2,7 +2,7 @@
 #define HEMDIFF_POSIX_H
 #include <stdint.h>
 #include <stddef.h>
-typedef struct { uint64_t device, inode, size, blocks; int64_t mtime_sec, mtime_nsec, ctime_sec, ctime_nsec; uint32_t mode, uid, links; } hmd_stat;
+typedef struct { uint64_t device, mount_id, inode, size, blocks; int64_t mtime_sec, mtime_nsec, ctime_sec, ctime_nsec; uint32_t mode, uid, links; } hmd_stat;
 int hmd_open_directory(const char *path);
 int hmd_open_child(int parent, const char *name);
 int hmd_open_regular(int parent, const char *name);

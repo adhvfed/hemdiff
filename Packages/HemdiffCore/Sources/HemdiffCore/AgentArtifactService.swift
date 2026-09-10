@@ -97,20 +97,22 @@ public final class AgentArtifactService {
     var candidates: [ArtifactCandidate] = []
     var errors: [String] = []
     var visited = 0
-    let pruned: Set<String> = [
-      ".git", "node_modules", "target", ".next", ".build", ".terraform", ".turbo", ".venv", "venv",
-      ".pytest_cache", ".ruff_cache", ".mypy_cache",
-    ]
-    func visit(_ url: URL, root: AgentRoot, device: UInt64) throws {
+    let pruned = Self.prunedDirectories
+    func visit(_ url: URL, root: AgentRoot, mountID: UInt64) throws {
       if cancelled() { throw CancellationError() }
       let directory = try DirectoryDescriptor(path: url.path)
-      guard try directory.stat().device == device else {
+      guard try directory.stat().mountID == mountID else {
         throw AgentServiceError.refused("Mount boundary skipped: \(url.path)")
       }
       visited += 1
+      let names = try directory.names()
+      let nameSet = Set(names)
       var artifactFirstComponents = Set<String>()
       for kind in ArtifactKind.allCases
-      where !kind.isKnownContainerArtifact && ArtifactRules.matches(kind, project: url) {
+      where !kind.isKnownContainerArtifact
+        && nameSet.contains(String(kind.folderName.split(separator: "/")[0]))
+        && !nameSet.isDisjoint(with: kind.markerNames)
+        && ArtifactRules.matches(kind, project: url) {
         let output = url.appendingPathComponent(kind.folderName, isDirectory: true)
         guard PathSafety.isDirectory(output) else { continue }
         do {
@@ -133,14 +135,14 @@ public final class AgentArtifactService {
           errors.append("\(output.path): \(error.localizedDescription)")
         }
       }
-      for name in try directory.names()
+      for name in names
       where !pruned.contains(name) && !artifactFirstComponents.contains(name) {
         if cancelled() { throw CancellationError() }
         let child = try directory.stat(name)
         if child.directory {
           do {
             try visit(
-              url.appendingPathComponent(name, isDirectory: true), root: root, device: device)
+              url.appendingPathComponent(name, isDirectory: true), root: root, mountID: mountID)
           } catch is CancellationError { throw CancellationError() } catch {
             errors.append(error.localizedDescription)
           }
@@ -155,7 +157,7 @@ public final class AgentArtifactService {
           throw AgentServiceError.refused("Configured root changed; reconfigure it before scanning")
         }
         let descriptor = try DirectoryDescriptor(path: root.path)
-        try visit(URL(fileURLWithPath: root.path), root: root, device: descriptor.stat().device)
+        try visit(URL(fileURLWithPath: root.path), root: root, mountID: descriptor.stat().mountID)
       } catch is CancellationError {
         wasCancelled = true
         break
@@ -174,11 +176,10 @@ public final class AgentArtifactService {
         throw AgentServiceError.refused("Select distinct artifact IDs")
       }
       let config = try state.configuration()
-      let inventory = try inventory(config: config, cancelled: cancelled)
-      if inventory.cancelled { throw CancellationError() }
-      let selected = inventory.candidates.filter { candidateIDs.contains($0.id) }
-      guard selected.count == candidateIDs.count else {
-        throw AgentServiceError.refused("An artifact is no longer available in configured roots")
+      try state.expirePlans(now: Date())
+      let selected = try candidateIDs.map { try resolveCandidate($0, configuration: config, cancelled: cancelled) }
+      guard Set(selected.map { $0.artifact.path }).count == selected.count else {
+        throw AgentServiceError.refused("Select each artifact path once")
       }
       var snapshots: [String: ArtifactStamp] = [:]
       for candidate in selected {
@@ -188,6 +189,18 @@ public final class AgentArtifactService {
         snapshots[candidate.id] = try ArtifactFilesystem.snapshot(
           candidate.artifact, quietInterval: quietInterval, now: Date(), cancelled: cancelled)
       }
+      // Hardlink metadata changes across artifacts during unlink. Keep those operations
+      // separate so every artifact is fully revalidated before any mutation begins.
+      var ownersByInode: [String: String] = [:]
+      for (candidateID, snapshot) in snapshots {
+        for node in snapshot.nodes.values where node.regular && node.links > 1 {
+          let inode = "\(node.device):\(node.inode)"
+          if let owner = ownersByInode[inode], owner != candidateID {
+            throw AgentServiceError.refused("Selected artifacts share hardlinks; prepare and clean them one at a time")
+          }
+          ownersByInode[inode] = candidateID
+        }
+      }
       let now = Date()
       let plan = CleanupPlan(
         id: UUID().uuidString, hostID: config.hostID, createdAt: now,
@@ -195,7 +208,7 @@ public final class AgentArtifactService {
         estimatedBytes: selected.reduce(0) { $0 + $1.artifact.allocatedBytes },
         quietInterval: quietInterval)
       try state.write(
-        StoredCleanupPlan(plan: plan, snapshots: snapshots), to: plan.id + ".plan.json")
+        StoredCleanupPlan(plan: plan, snapshots: snapshots), to: plan.id + ".plan.plist")
       return plan
     }
   }
@@ -209,7 +222,7 @@ public final class AgentArtifactService {
         throw AgentServiceError.refused("Plan belongs to another host")
       }
       if state.exists(planID + ".receipt.json") { return try state.read(planID + ".receipt.json") }
-      let stored: StoredCleanupPlan = try state.read(planID + ".plan.json")
+      let stored: StoredCleanupPlan = try state.read(planID + ".plan.plist")
       let plan = stored.plan
       guard plan.hostID == config.hostID, plan.id == planID else {
         throw AgentServiceError.refused("Plan identity mismatch")
@@ -265,6 +278,7 @@ public final class AgentArtifactService {
         outcome: failures.isEmpty ? .completed : .partial, removedArtifactIDs: removed,
         estimatedRemovedBytes: bytes, failures: failures, accountingComplete: failures.isEmpty)
       try state.write(receipt, to: planID + ".receipt.json")
+      if receipt.outcome == .completed { try? state.discardManifest(planID) }
       return receipt
     }
   }
@@ -272,6 +286,61 @@ public final class AgentArtifactService {
     try state.validateID(planID)
     return try state.locked { try state.read(planID + ".receipt.json") }
   }
+  private static let prunedDirectories: Set<String> = [
+    ".git", "node_modules", "target", ".next", ".build", ".terraform", ".turbo", ".venv", "venv",
+    ".pytest_cache", ".ruff_cache", ".mypy_cache",
+  ]
+
+  // IDs are selectors, never authority. Resolve only an exact rule-derived path inside
+  // a configured root, then perform the same evidence and traversal checks as inventory.
+  private func resolveCandidate(_ id: String, configuration: AgentConfiguration,
+                                cancelled: () -> Bool) throws -> ArtifactCandidate {
+    if cancelled() { throw CancellationError() }
+    let parts = id.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+    guard parts.count == 2, let kind = ArtifactKind(rawValue: String(parts[0])),
+      !kind.isKnownContainerArtifact, parts[1].hasPrefix("/") else {
+      throw AgentServiceError.refused("Invalid artifact ID")
+    }
+    let selectedURL = URL(fileURLWithPath: String(parts[1])).standardizedFileURL
+    guard selectedURL.path == String(parts[1]) else { throw AgentServiceError.refused("Noncanonical artifact path") }
+    let output = PathSafety.physicalSystemPath(selectedURL)
+    var project = output
+    for _ in kind.folderName.split(separator: "/") { project.deleteLastPathComponent() }
+    guard project.appendingPathComponent(kind.folderName).path == output.path,
+      let root = configuration.roots.first(where: { PathSafety.contains(project, in: URL(fileURLWithPath: $0.path)) }),
+      try ArtifactFileIdentity.capture(at: URL(fileURLWithPath: root.path)) == root.identity else {
+      throw AgentServiceError.refused("Artifact is outside configured roots or its root changed")
+    }
+    let rootDescriptor = try DirectoryDescriptor(path: root.path)
+    let mount = try rootDescriptor.stat().mountID
+    var cursor = project
+    while cursor.path != root.path {
+      if cancelled() { throw CancellationError() }
+      guard !Self.prunedDirectories.contains(cursor.lastPathComponent),
+        try DirectoryDescriptor(path: cursor.path).stat().mountID == mount else {
+        throw AgentServiceError.refused("Artifact is nested in an excluded directory or another mount")
+      }
+      let parent = cursor.deletingLastPathComponent()
+      for ancestorKind in ArtifactKind.allCases where !ancestorKind.isKnownContainerArtifact {
+        let ancestorOutput = parent.appendingPathComponent(ancestorKind.folderName)
+        if PathSafety.contains(project, in: ancestorOutput), ArtifactRules.matches(ancestorKind, project: parent) {
+          throw AgentServiceError.refused("Select the enclosing artifact instead")
+        }
+      }
+      cursor = parent
+    }
+    let identity = try ArtifactFileIdentity.capture(at: output)
+    let artifact = Artifact(kind: kind, path: output.path, projectPath: project.path,
+      allocatedBytes: 0, createdAt: nil, modifiedAt: nil, fileIdentity: identity)
+    try ArtifactReclaimer().validate(artifact)
+    let stamp = try ArtifactFilesystem.snapshot(artifact, quietInterval: 0, now: Date(), cancelled: cancelled)
+    let measured = Artifact(kind: kind, path: output.path, projectPath: project.path,
+      allocatedBytes: stamp.nodes.values.reduce(0) { $0 + Int64(clamping: $1.blocks) * 512 },
+      createdAt: nil, modifiedAt: stamp.nodes[""]?.modified, fileIdentity: identity)
+    return ArtifactCandidate(id: measured.id, rootID: root.id, artifact: measured,
+      evidence: stamp.markers.keys.sorted(), authorized: root.grantedKinds.contains(kind))
+  }
+
   private func authorize(_ candidate: ArtifactCandidate, configuration: AgentConfiguration) throws {
     guard let root = configuration.roots.first(where: { $0.id == candidate.rootID }),
       root.grantedKinds.contains(candidate.artifact.kind),

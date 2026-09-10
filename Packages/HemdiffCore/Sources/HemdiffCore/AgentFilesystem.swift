@@ -3,11 +3,12 @@ import Foundation
 import HemdiffPOSIX
 
 struct NodeStamp: Codable, Equatable, Sendable {
-  let device: UInt64, inode: UInt64, size: UInt64, blocks: UInt64
+  let device: UInt64, mountID: UInt64, inode: UInt64, size: UInt64, blocks: UInt64
   let mtimeSeconds: Int64, mtimeNanoseconds: Int64, ctimeSeconds: Int64, ctimeNanoseconds: Int64
   let mode: UInt32, uid: UInt32, links: UInt32
   init(_ s: hmd_stat) {
     device = s.device
+    mountID = s.mount_id
     inode = s.inode
     size = s.size
     blocks = s.blocks
@@ -29,7 +30,7 @@ struct NodeStamp: Codable, Equatable, Sendable {
         Double(ctimeSeconds) + Double(ctimeNanoseconds) / 1_000_000_000))
   }
   func sameIdentity(_ other: NodeStamp) -> Bool {
-    device == other.device && inode == other.inode && mode == other.mode
+    device == other.device && mountID == other.mountID && inode == other.inode && mode == other.mode
   }
 }
 struct ArtifactStamp: Codable, Equatable, Sendable {
@@ -101,13 +102,13 @@ struct ArtifactFilesystem {
     let project = try DirectoryDescriptor(path: artifact.projectPath)
     let root = try DirectoryDescriptor(path: artifact.path)
     let rootStat = try root.stat()
-    guard rootStat.device == (try project.stat()).device else {
+    guard rootStat.mountID == (try project.stat()).mountID else {
       throw AgentServiceError.refused("Artifact crosses a filesystem boundary")
     }
     var nodes = [String: NodeStamp]()
     func walk(_ dir: DirectoryDescriptor, _ relative: String, _ stamp: NodeStamp) throws {
       if cancelled() { throw CancellationError() }
-      guard stamp.directory || stamp.regular || stamp.symbolicLink, stamp.device == rootStat.device
+      guard stamp.directory || stamp.regular || stamp.symbolicLink, stamp.mountID == rootStat.mountID
       else { throw AgentServiceError.refused("Mounts and special files cannot be cleaned") }
       guard now.timeIntervalSince(stamp.modified) >= quietInterval else {
         throw AgentServiceError.refused("Build output changed recently; wait for it to become idle")
@@ -121,7 +122,7 @@ struct ArtifactFilesystem {
         let child = try dir.stat(name)
         let path = relative.isEmpty ? name : relative + "/" + name
         guard child.directory || child.regular || child.symbolicLink,
-          child.device == rootStat.device
+          child.mountID == rootStat.mountID
         else { throw AgentServiceError.refused("Mounts and special files cannot be cleaned") }
         if child.directory {
           let descriptor = try DirectoryDescriptor(parent: dir, name: name)
@@ -190,6 +191,10 @@ struct ArtifactFilesystem {
     }
     var removed: Int64 = 0
     var remainingNodes = stamp.nodes
+    // Build once: dependency trees can contain thousands of hardlinks.
+    let aliasesByInode = Dictionary(grouping: stamp.nodes.filter { $0.value.regular && $0.value.links > 1 }) {
+      "\($0.value.device):\($0.value.inode)"
+    }.mapValues { $0.map(\.key) }
     func walk(_ directory: DirectoryDescriptor, _ relative: String) throws {
       if cancelled() { throw CancellationError() }
       for name in try directory.names() {
@@ -230,9 +235,7 @@ struct ArtifactFilesystem {
           else { throw AgentServiceError.refused("Hardlinked file changed during cleanup") }
           // Unlink changes ctime/nlink on every remaining name for this inode. Use the
           // post-unlink descriptor stamp only after verifying content metadata is unchanged.
-          let aliases = remainingNodes.filter {
-            $0.value.device == expected.device && $0.value.inode == expected.inode
-          }.map(\.key)
+          let aliases = aliasesByInode["\(expected.device):\(expected.inode)"] ?? []
           for key in aliases { remainingNodes[key] = after }
         }
         removed += Int64(clamping: expected.blocks) * 512

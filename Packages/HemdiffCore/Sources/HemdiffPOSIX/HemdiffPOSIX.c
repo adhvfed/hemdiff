@@ -1,3 +1,6 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include "HemdiffPOSIX.h"
 #include <sys/stat.h>
 #include <sys/file.h>
@@ -14,10 +17,18 @@
 #include <time.h>
 #include <signal.h>
 
+#ifdef __linux__
+#include <linux/stat.h>
+#include <sys/syscall.h>
+#include <sys/sysmacros.h>
+#endif
+
 extern char **environ;
 
 static void convert(struct stat value, hmd_stat *out) {
+    memset(out, 0, sizeof(*out));
     out->device = value.st_dev;
+    out->mount_id = value.st_dev;
     out->inode = value.st_ino;
     out->size = value.st_size;
     out->blocks = value.st_blocks;
@@ -37,18 +48,53 @@ static void convert(struct stat value, hmd_stat *out) {
 #endif
 }
 
+// Linux mount IDs distinguish bind mounts even when st_dev is identical.
+// Read all fields in one statx operation; older kernels fail closed.
+#ifdef __linux__
+static int inspect_at(int fd, const char *name, int flags, hmd_stat *out) {
+    struct statx value;
+    memset(&value, 0, sizeof(value));
+    if (syscall(SYS_statx, fd, name, flags, STATX_BASIC_STATS | STATX_MNT_ID, &value)) return -1;
+    if ((value.stx_mask & (STATX_BASIC_STATS | STATX_MNT_ID)) != (STATX_BASIC_STATS | STATX_MNT_ID)) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    memset(out, 0, sizeof(*out));
+    out->device = makedev(value.stx_dev_major, value.stx_dev_minor);
+    out->mount_id = value.stx_mnt_id;
+    out->inode = value.stx_ino;
+    out->size = value.stx_size;
+    out->blocks = value.stx_blocks;
+    out->mode = value.stx_mode;
+    out->uid = value.stx_uid;
+    out->links = value.stx_nlink;
+    out->mtime_sec = value.stx_mtime.tv_sec;
+    out->mtime_nsec = value.stx_mtime.tv_nsec;
+    out->ctime_sec = value.stx_ctime.tv_sec;
+    out->ctime_nsec = value.stx_ctime.tv_nsec;
+    return 0;
+}
+#endif
 int hmd_stat_fd(int fd, hmd_stat *out) {
+#ifdef __linux__
+    return inspect_at(fd, "", AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW, out);
+#else
     struct stat value;
     if (fstat(fd, &value)) return -1;
     convert(value, out);
     return 0;
+#endif
 }
 
 int hmd_stat_child(int fd, const char *name, hmd_stat *out) {
+#ifdef __linux__
+    return inspect_at(fd, name, AT_SYMLINK_NOFOLLOW, out);
+#else
     struct stat value;
     if (fstatat(fd, name, &value, AT_SYMLINK_NOFOLLOW)) return -1;
     convert(value, out);
     return 0;
+#endif
 }
 
 int hmd_open_child(int fd, const char *name) {

@@ -62,25 +62,58 @@ final class AgentState {
   func exists(_ name: String) -> Bool { name.withCString { hmd_exists(directory.fd, $0) != 0 } }
   func read<T: Decodable>(_ name: String) throws -> T {
     var count = 0
-    guard let pointer = name.withCString({ hmd_read(directory.fd, $0, &count, 32_000_000) }) else {
+    guard let pointer = name.withCString({ hmd_read(directory.fd, $0, &count, name.hasSuffix(".plist") ? 128_000_000 : 32_000_000) }) else {
       throw AgentServiceError.refused("State record missing, too large, or insecure: \(name)")
     }
     defer { hmd_free(pointer) }
-    return try JSONDecoder().decode(T.self, from: Data(bytes: pointer, count: count))
+    let data = Data(bytes: pointer, count: count)
+    if name.hasSuffix(".plist") { return try PropertyListDecoder().decode(T.self, from: data) }
+    return try JSONDecoder().decode(T.self, from: data)
   }
   func write<T: Encodable>(_ value: T, to name: String) throws {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    let data = try encoder.encode(value)
-    guard data.count <= 32_000_000 else {
+    let data: Data
+    if name.hasSuffix(".plist") {
+      let encoder = PropertyListEncoder()
+      encoder.outputFormat = .binary
+      data = try encoder.encode(value)
+    } else {
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.sortedKeys]
+      data = try encoder.encode(value)
+    }
+    guard data.count <= (name.hasSuffix(".plist") ? 128_000_000 : 32_000_000) else {
       throw AgentServiceError.refused(
         "Plan is too large for this service version; select fewer artifacts")
+    }
+    if name.hasSuffix(".plan.plist") {
+      let manifests = try directory.names().filter { $0.hasSuffix(".plan.plist") }
+      let retainedBytes = try manifests.reduce(UInt64(0)) { $0 + (try directory.stat($1).size) }
+      guard manifests.count < 32, retainedBytes + UInt64(data.count) <= 256_000_000 else {
+        throw AgentServiceError.refused("Pending plan storage is full; execute existing plans or let them expire")
+      }
     }
     guard
       data.withUnsafeBytes({ bytes in
         name.withCString { hmd_write(directory.fd, $0, bytes.baseAddress, data.count) }
       }) == 0
     else { throw AgentServiceError.refused("Cannot durably persist state record") }
+  }
+  // Receipts remain small and durable; descendant manifests are disposable after completion.
+  func discardManifest(_ planID: String) throws {
+    for suffix in [".plan.plist", ".started.json"] {
+      let name = planID + suffix
+      if exists(name), name.withCString({ hmd_unlink(directory.fd, $0, 0) }) != 0 {
+        throw AgentServiceError.refused("Cannot remove completed plan manifest")
+      }
+    }
+  }
+  func expirePlans(now: Date) throws {
+    for name in try directory.names() where name.hasSuffix(".plan.plist") {
+      let id = String(name.dropLast(".plan.plist".count))
+      guard UUID(uuidString: id) != nil, !exists(id + ".started.json") else { continue }
+      let stored: StoredCleanupPlan = try read(name)
+      if stored.plan.expiresAt <= now { try discardManifest(id) }
+    }
   }
   func validateID(_ id: String) throws {
     guard let parsed = UUID(uuidString: id), parsed.uuidString == id.uppercased() else {

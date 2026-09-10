@@ -59,7 +59,7 @@ The POSIX adapter walks ancestors without following links, opens directories by
 file descriptor, snapshots nanosecond timestamps and identity, and unlinks entries
 relative to verified parents. Descendant symlinks are counted/unlinked as entries;
 targets are never traversed. Root/ancestor links, special files, nested version
-control metadata and cross-device mounts are refused. Hardlinks within an artifact
+control metadata and mount boundaries are refused (including Linux same-device bind mounts via statx). Hardlinks within an artifact
 are handled by verifying the post-unlink inode stamp and updating remaining aliases;
 external hardlink names survive.
 
@@ -75,14 +75,15 @@ covers completed artifact removals only, not an assertion that no other files ch
 
 - This is artifact inventory, not a portable version of the full SQLite file index.
   Xcode's known-container cleanup is not yet exposed through the agent service.
-- Plans/manifests are in memory and each persisted JSON record is capped at 32 MB.
-  Oversized plans fail explicitly before mutation; no truncation occurs.
-- Planning currently re-inventories configured roots. Selected-candidate resolution
-  and streaming manifests are opportunities for a later performance pass.
-- Separate artifacts sharing hardlinked files may conservatively produce a partial
-  receipt after the first artifact changes the other artifact's inode metadata.
-  No automatic retry deletes the remainder. Hardlinks within one artifact work.
-- Device checks detect cross-device mounts, not same-device bind mounts.
+- Recursive manifests remain in memory. Private binary plans are capped at 128 MB
+  each and 32 pending plans / 256 MB aggregate. Oversized plans fail before mutation.
+  Completed manifests are discarded after durable receipts; expired unused plans
+  are discarded when preparing another plan. Receipts remain available.
+- Planning resolves only selected IDs through configured-root, shared-rule, mount,
+  and ancestor-exclusion checks. It does not rescan unrelated workspaces.
+- Separate artifacts sharing hardlinked files must be planned and cleaned one at a
+  time. The combined plan is refused before mutation; internal hardlinks work.
+- Linux requires statx mount IDs (kernel 5.8 or newer); missing support fails closed.
 - Activity observations and quiet periods cannot prevent a build from starting
   afterwards. Descriptor-relative operations narrow replacement races but do not
   promise atomic compare-and-unlink against hostile same-user processes or root.

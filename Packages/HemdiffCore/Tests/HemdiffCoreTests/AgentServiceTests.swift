@@ -42,6 +42,36 @@ final class AgentServiceTests: XCTestCase {
       try service.execute(planID: plan.id, expectedHostID: plan.hostID)
     }
   }
+  func testDirectPlanningRefusesUnrecognizedAndNestedPaths() throws {
+    let f = try Fixture()
+    defer { f.cleanup() }
+    try f.service.grant(rootID: f.rootID, kinds: [.nextBuild])
+    let nested = f.output.appendingPathComponent("nested")
+    try FileManager.default.createDirectory(at: nested.appendingPathComponent(".next"), withIntermediateDirectories: true)
+    try Data("{}".utf8).write(to: nested.appendingPathComponent("package.json"))
+    let nestedID = "nextBuild:" + nested.appendingPathComponent(".next").standardizedFileURL.path
+    XCTAssertThrowsError(try f.service.prepare(candidateIDs: [nestedID]))
+    let sourceID = "nextBuild:" + f.project.appendingPathComponent("source.ts").standardizedFileURL.path
+    XCTAssertThrowsError(try f.service.prepare(candidateIDs: [sourceID]))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: f.project.appendingPathComponent("source.ts").path))
+  }
+  func testLinuxBindMountBoundary() throws {
+    guard let path = ProcessInfo.processInfo.environment["HEMDIFF_TEST_MOUNT_ROOT"] else {
+      throw XCTSkip("Requires disposable Linux mount fixture")
+    }
+    let root = URL(fileURLWithPath: path)
+    let base = FileManager.default.temporaryDirectory.appendingPathComponent("hemdiff-mount-state-" + UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: base) }
+    let service = try AgentArtifactService(stateDirectory: base, activityChecker: TestActivity(state: .noDetectedActivity), quietInterval: 0)
+    let configured = try service.configureRoot(root)
+    try service.grant(rootID: configured.id, kinds: [.nextBuild])
+    let inventory = try service.inventory()
+    XCTAssertTrue(inventory.candidates.isEmpty)
+    XCTAssertFalse(inventory.errors.isEmpty)
+    let output = root.appendingPathComponent("project/.next")
+    XCTAssertThrowsError(try service.prepare(candidateIDs: ["nextBuild:" + output.path]))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: output.appendingPathComponent("keep").path))
+  }
   func testReadConfigurationDoesNotAuthorizeDeletion() throws {
     let f = try Fixture()
     defer { f.cleanup() }
@@ -255,10 +285,29 @@ final class AgentServiceTests: XCTestCase {
     let encoded = String(decoding: try JSONEncoder().encode(plan), as: UTF8.self)
     XCTAssertFalse(encoded.contains("snapshots"))
     XCTAssertFalse(encoded.contains("markerDigests"))
-    let stored = try String(
-      contentsOf: f.state.appendingPathComponent(plan.id + ".plan.json"), encoding: .utf8)
+    let storedPlan: StoredCleanupPlan = try AgentState(url: f.state).read(plan.id + ".plan.plist")
+    let stored = String(decoding: try JSONEncoder().encode(storedPlan), as: UTF8.self)
     XCTAssertTrue(stored.contains("markerDigests"))
     XCTAssertFalse(stored.contains("private\\\":true"))
+  }
+  func testCompletedManifestIsRemovedButReceiptSurvives() throws {
+    let f = try Fixture()
+    defer { f.cleanup() }
+    let plan = try f.plan()
+    XCTAssertTrue(FileManager.default.fileExists(atPath: f.state.appendingPathComponent(plan.id + ".plan.plist").path))
+    let receipt = try f.execute(plan)
+    XCTAssertEqual(receipt.outcome, .completed)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: f.state.appendingPathComponent(plan.id + ".plan.plist").path))
+    XCTAssertEqual(try f.service.receipt(planID: plan.id).outcome, .completed)
+    XCTAssertEqual(try f.execute(plan).outcome, .completed)
+  }
+  func testExpiredManifestIsRemovedWhenPreparingAgain() throws {
+    let f = try Fixture(lifetime: 0.001)
+    defer { f.cleanup() }
+    let first = try f.plan()
+    Thread.sleep(forTimeInterval: 0.01)
+    _ = try f.plan()
+    XCTAssertFalse(FileManager.default.fileExists(atPath: f.state.appendingPathComponent(first.id + ".plan.plist").path))
   }
   func testMigratedStateRefused() throws {
     let f = try Fixture()
@@ -313,6 +362,17 @@ final class AgentServiceTests: XCTestCase {
           return false
         }))
     XCTAssertEqual(try String(contentsOf: added, encoding: .utf8), "keep")
+  }
+  func testSharedHardlinksAcrossArtifactsRefusedBeforeMutation() throws {
+    let f = try Fixture()
+    defer { f.cleanup() }
+    let modules = f.project.appendingPathComponent("node_modules")
+    try FileManager.default.createDirectory(at: modules, withIntermediateDirectories: true)
+    try FileManager.default.linkItem(at: f.output.appendingPathComponent("chunk"), to: modules.appendingPathComponent("alias"))
+    try f.service.grant(rootID: f.rootID, kinds: [.nextBuild, .nodeModules])
+    XCTAssertThrowsError(try f.service.prepare(candidateIDs: f.service.inventory().candidates.map(\.id)))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: f.output.appendingPathComponent("chunk").path))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: modules.appendingPathComponent("alias").path))
   }
   func testBothSiblingArtifactsCanBeCleanedInOnePlan() throws {
     let f = try Fixture()
