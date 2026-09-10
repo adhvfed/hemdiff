@@ -73,12 +73,7 @@ struct ProjectLocator: Sendable {
     ]
 
     static func xcodeDerivedDataRoot(in home: URL) -> URL {
-        home
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Developer", isDirectory: true)
-            .appendingPathComponent("Xcode", isDirectory: true)
-            .appendingPathComponent("DerivedData", isDirectory: true)
-            .standardizedFileURL
+        ArtifactContainers.xcodeDerivedDataRoot(in: home)
     }
 
     func locate(

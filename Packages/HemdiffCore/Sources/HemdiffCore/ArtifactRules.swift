@@ -1,8 +1,8 @@
 import Foundation
 
 /// Project markers establish ownership; names alone never make a generic build folder reclaimable.
-enum ArtifactRules {
-    static func matches(_ kind: ArtifactKind, project: URL) -> Bool {
+public enum ArtifactRules {
+    public static func matches(_ kind: ArtifactKind, project: URL) -> Bool {
         guard kind.markerNames.contains(where: { regularFile(project.appendingPathComponent($0)) }) else { return false }
         if kind == .terraformProviders {
             // Never treat the .terraform container, backend metadata, state, or lockfile as output.
@@ -12,7 +12,7 @@ enum ArtifactRules {
         return true
     }
 
-    static func containsArtifact(_ url: URL) -> Bool {
+    public static func containsArtifact(_ url: URL) -> Bool {
         var candidate = url.standardizedFileURL
         while candidate.path != "/" {
             for kind in ArtifactKind.allCases where !kind.isKnownContainerArtifact {

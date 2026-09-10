@@ -1,6 +1,6 @@
 import Foundation
 
-enum ReclaimValidationError: LocalizedError, Equatable {
+public enum ReclaimValidationError: LocalizedError, Equatable {
     case missing
     case symbolicLink
     case unexpectedPath
@@ -8,7 +8,7 @@ enum ReclaimValidationError: LocalizedError, Equatable {
     case missingProjectMarker
     case missingContainer
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .missing: "The folder no longer exists."
         case .symbolicLink: "Symbolic links can’t be deleted here."
@@ -20,14 +20,14 @@ enum ReclaimValidationError: LocalizedError, Equatable {
     }
 }
 
-struct ArtifactReclaimer: Sendable {
+public struct ArtifactReclaimer: Sendable {
     private let homeDirectory: URL
 
-    init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    public init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
         self.homeDirectory = homeDirectory.standardizedFileURL
     }
 
-    func validate(_ artifact: Artifact) throws {
+    public func validate(_ artifact: Artifact) throws {
         guard !PathSafety.hasSymbolicLink(in: artifact.url) else {
             throw ReclaimValidationError.symbolicLink
         }
@@ -85,7 +85,7 @@ struct ArtifactReclaimer: Sendable {
     private func validateKnownContainerArtifact(_ artifact: Artifact) throws {
         let url = artifact.url.standardizedFileURL
         let containerURL = artifact.projectURL.standardizedFileURL
-        let expectedContainer = ProjectLocator
+        let expectedContainer = ArtifactContainers
             .xcodeDerivedDataRoot(in: homeDirectory)
 
         guard artifact.kind == .xcodeDerivedData,
@@ -126,7 +126,7 @@ struct ArtifactReclaimer: Sendable {
         }
     }
 
-    func reclaim(_ artifacts: [Artifact]) async -> ReclaimResult {
+    public func reclaim(_ artifacts: [Artifact]) async -> ReclaimResult {
         await Task.detached(priority: .utility) {
             var reclaimedIDs = Set<Artifact.ID>()
             var reclaimedBytes: Int64 = 0

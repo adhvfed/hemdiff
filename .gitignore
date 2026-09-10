@@ -4,3 +4,6 @@ build/
 planning/screenshots/
 *.xcuserstate
 xcuserdata/
+
+.swiftpm/
+.build/

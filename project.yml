@@ -13,8 +13,13 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
     MACOSX_DEPLOYMENT_TARGET: "14.0"
+packages:
+  HemdiffCore:
+    path: Packages/HemdiffCore
 targets:
   DiskSift:
+    dependencies:
+      - package: HemdiffCore
     productName: Hemdiff
     type: application
     platform: macOS
