@@ -91,7 +91,7 @@ connection as “nothing happened.” Retrying a completed plan returns its rece
 interrupted or partial work is never silently resumed.
 
 Only one filesystem operation runs in a server session at once. Concurrent calls
-receive a busy error and can retry after the active call finishes. Cross-process
+enter a bounded, cancellable FIFO queue. Cross-process
 serialization is independently enforced by the core state lock. Input frames are
 limited to 1 MiB with a 16-frame queue and at most 16 outstanding requests;
 overflow closes the session. The official
@@ -186,3 +186,15 @@ GUI and CLI execution share a private per-user mutation lease, independent of th
 agent state directory. Concurrent cleanup is refused; inventory and plan preparation
 can still run independently. After a crash, `cleanup_receipt` resolves a started
 journal as interrupted without retrying deletion.
+
+On Linux, process inspection ignores zombies (which hold no open file descriptors)
+and protected authentication supervisors named `(sd-pam)`, `sshd`, or `sshd-session`
+when their descriptor lists are inaccessible. Inaccessible build processes or other
+unknown processes still refuse cleanup. This is best-effort activity observation,
+combined with a quiet interval and recursive revalidation, not a claim that a new
+build cannot start.
+
+Within one MCP session, operations run sequentially through a FIFO queue with at
+most eight waiting requests and a 30-second queue wait limit. Parallel status and
+inventory requests work normally. Queued requests are cancellable; shutdown
+cancels and drains active work before exiting.

@@ -11,6 +11,8 @@ for checkout in "$checkouts/"*; do
     relative=${notice#"$checkout/"}
     destination="$output/$(basename "$checkout")/$relative"
     mkdir -p "$(dirname "$destination")"
-    cp "$notice" "$destination"
+    # SwiftPM checkouts can be read-only; make repeated packaging builds work.
+    cp -f "$notice" "$destination"
+    chmod u+w "$destination"
   done < <(find "$checkout" -type f \( -name 'LICENSE*' -o -name 'NOTICE*' -o -name 'COPYING*' \) -print0)
 done

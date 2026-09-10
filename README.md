@@ -58,6 +58,23 @@ Terraform state, backend metadata, and lockfiles are preserved. Custom output
 paths and generic folders named `cache` or `dist` are not automatically offered.
 These are practical project conventions, not a guarantee about custom user data.
 
+## CLI, MCP and Linux
+
+The standalone `hemdiff` command shares the app's artifact rules and cleanup
+engine. It supports macOS and a static Linux x86-64 build with no Swift runtime
+installation required. MCP exposes scoped inventory, exact cleanup plans and
+receipts; root access and cleanup permissions are explicitly configured locally.
+Use existing SSH for remote hosts, including Cloudflare SSH configurations.
+
+See [agent setup and authorization](docs/agent-access.md) for commands, MCP/SSH
+examples, build instructions and current limitations. Ordinary files and Trash
+remain in the Mac app.
+
+Cleanup now captures recursive evidence before confirmation and rechecks it
+before deletion. Active/recently changed output, tracked files, nested version
+control metadata and mount crossings are refused. These checks can conservatively
+exclude dependency caches containing their own repositories.
+
 ## Setup
 
 First launch automatically finds and preselects likely workspaces on a single
@@ -131,3 +148,8 @@ See [the research and heuristic rationale](docs/workspace-discovery.md).
 The menu bar panel offers **Scan Now** and **Clean Build Output…**. Cleanup opens
 a fixed list of detected build folders for confirmation before deleting anything.
 Use **View → Show Menu Bar Icon** to restore the menu bar item if it is hidden.
+
+For a local development reinstall, run `python3 tools/install-app.py PATH/TO/Hemdiff.app`.
+It verifies the bundle identity, closes the installed app, replaces it with rollback
+on rename failure, and reopens it. It uses ad-hoc signing and leaves no backup app
+bundle behind. Public distribution still requires Developer ID signing and notarization.

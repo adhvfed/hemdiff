@@ -1,0 +1,46 @@
+name: Verify Hemdiff
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shared core tests
+        run: swift test --package-path Packages/HemdiffCore
+      - name: Agent tests
+        run: swift test --package-path Packages/HemdiffAgent
+      - name: MCP executable contracts
+        run: python3 -B Packages/HemdiffAgent/Tests/Protocol/contract.py Packages/HemdiffAgent/.build/debug/hemdiff
+      - name: Generate Xcode project
+        run: brew install xcodegen && xcodegen generate
+      - name: App regression tests
+        run: xcodebuild -project DiskSift.xcodeproj -scheme DiskSift -destination 'platform=macOS' -derivedDataPath build/app-tests test CODE_SIGNING_ALLOWED=NO
+      - name: Build command-line distribution
+        run: tools/build-agent.sh
+  linux:
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:6.3.3
+      volumes:
+        - /etc/machine-id:/etc/machine-id:ro
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install activity-test fixture dependency
+        run: apt-get update && apt-get install -y --no-install-recommends python3
+      - name: Shared core tests
+        run: swift test --package-path Packages/HemdiffCore
+      - name: Agent tests
+        run: swift test --package-path Packages/HemdiffAgent
+      - name: MCP executable contracts
+        run: python3 -B Packages/HemdiffAgent/Tests/Protocol/contract.py Packages/HemdiffAgent/.build/debug/hemdiff
+      - name: Install static Linux SDK
+        run: swift sdk install https://download.swift.org/swift-6.3.3-release/static-sdk/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz --checksum 87c3eaf908e67c0e13a84367119e12273cec1d2cd3d81f7d74bb36722d6b607b
+      - name: Build static Linux command
+        run: tools/build-agent.sh --swift-sdk x86_64-swift-linux-musl
+      - name: Verify standalone launch
+        run: build/agent/hemdiff --help
