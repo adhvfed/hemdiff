@@ -220,7 +220,7 @@ final class AgentServiceTests: XCTestCase {
     let plan = try f.plan()
     let state = try AgentState(url: f.state)
     try state.write(["planID": plan.id], to: plan.id + ".started.json")
-    let result = try f.execute(plan)
+    let result = try f.service.receipt(planID: plan.id)
     XCTAssertEqual(result.outcome, .interrupted)
     XCTAssertFalse(result.accountingComplete)
     XCTAssertTrue(FileManager.default.fileExists(atPath: f.output.path))

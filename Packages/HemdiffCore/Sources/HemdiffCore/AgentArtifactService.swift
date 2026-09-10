@@ -216,7 +216,8 @@ public final class AgentArtifactService {
     throws -> CleanupReceipt
   {
     try state.validateID(planID)
-    return try state.locked {
+    return try CleanupExecutionLock.withLock {
+      try state.locked {
       let config = try state.configuration()
       guard expectedHostID == config.hostID else {
         throw AgentServiceError.refused("Plan belongs to another host")
@@ -228,15 +229,7 @@ public final class AgentArtifactService {
         throw AgentServiceError.refused("Plan identity mismatch")
       }
       if state.exists(planID + ".started.json") {
-        let receipt = CleanupReceipt(
-          planID: planID, hostID: config.hostID, finishedAt: Date(), outcome: .interrupted,
-          removedArtifactIDs: [], estimatedRemovedBytes: 0,
-          failures: [
-            "execution":
-              "Previous execution was interrupted; inspect and prepare a new plan. No deletion was retried."
-          ], accountingComplete: false)
-        try state.write(receipt, to: planID + ".receipt.json")
-        return receipt
+        return try interruptedReceipt(planID: planID, hostID: config.hostID)
       }
       guard plan.expiresAt > Date() else { throw AgentServiceError.refused("Cleanup plan expired") }
       func revalidate(_ candidate: ArtifactCandidate) throws -> ArtifactStamp {
@@ -280,11 +273,29 @@ public final class AgentArtifactService {
       try state.write(receipt, to: planID + ".receipt.json")
       if receipt.outcome == .completed { try? state.discardManifest(planID) }
       return receipt
+      }
     }
   }
   public func receipt(planID: String) throws -> CleanupReceipt {
     try state.validateID(planID)
-    return try state.locked { try state.read(planID + ".receipt.json") }
+    return try state.locked {
+      if state.exists(planID + ".receipt.json") { return try state.read(planID + ".receipt.json") }
+      let config = try state.configuration()
+      let stored: StoredCleanupPlan = try state.read(planID + ".plan.plist")
+      guard stored.plan.id == planID, stored.plan.hostID == config.hostID,
+        state.exists(planID + ".started.json") else {
+        throw AgentServiceError.refused("No execution receipt exists for this plan")
+      }
+      return try interruptedReceipt(planID: planID, hostID: config.hostID)
+    }
+  }
+  private func interruptedReceipt(planID: String, hostID: String) throws -> CleanupReceipt {
+    let receipt = CleanupReceipt(planID: planID, hostID: hostID, finishedAt: Date(),
+      outcome: .interrupted, removedArtifactIDs: [], estimatedRemovedBytes: 0,
+      failures: ["execution": "Previous execution was interrupted; inspect and prepare a new plan. No deletion was retried."],
+      accountingComplete: false)
+    try state.write(receipt, to: planID + ".receipt.json")
+    return receipt
   }
   private static let prunedDirectories: Set<String> = [
     ".git", "node_modules", "target", ".next", ".build", ".terraform", ".turbo", ".venv", "venv",
