@@ -269,6 +269,7 @@
 				6D62AE5EDCB10FE25A891098 /* Sources */,
 				1C8BAF14F75EF699ED2530D5 /* Resources */,
 				70C5000B5F7ED32C3EC35440 /* Frameworks */,
+				01D57859DF5ABBF7B89270BE /* Include dependency notices */,
 			);
 			buildRules = (
 			);
@@ -350,6 +351,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		01D57859DF5ABBF7B89270BE /* Include dependency notices */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Include dependency notices";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/tools/copy-package-notices.sh\" \"${BUILD_DIR%/Build/Products}/SourcePackages/checkouts\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ThirdPartyNotices\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		4D55F15E218213113B73C4C5 /* Sources */ = {

@@ -126,32 +126,4 @@ public struct ArtifactReclaimer: Sendable {
         }
     }
 
-    public func reclaim(_ artifacts: [Artifact]) async -> ReclaimResult {
-        await Task.detached(priority: .utility) {
-            var reclaimedIDs = Set<Artifact.ID>()
-            var reclaimedBytes: Int64 = 0
-            var failures: [String: String] = [:]
-            var seenPaths = Set<String>()
-
-            for artifact in artifacts {
-                let path = artifact.url.standardizedFileURL.path
-                guard seenPaths.insert(path).inserted else { continue }
-
-                do {
-                    try validate(artifact)
-                    try FileManager.default.removeItem(at: artifact.url.standardizedFileURL)
-                    reclaimedIDs.insert(artifact.id)
-                    reclaimedBytes += artifact.allocatedBytes
-                } catch {
-                    failures[artifact.id] = error.localizedDescription
-                }
-            }
-
-            return ReclaimResult(
-                reclaimedIDs: reclaimedIDs,
-                reclaimedBytes: reclaimedBytes,
-                failures: failures
-            )
-        }.value
-    }
 }

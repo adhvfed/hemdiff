@@ -46,7 +46,7 @@ struct ArtifactStamp: Codable, Equatable, Sendable {
 final class DirectoryDescriptor {
   let fd: Int32
   init(path: String) throws {
-    fd = hmd_open_directory(path)
+    fd = hmd_open_directory(PathSafety.physicalSystemPath(URL(fileURLWithPath: path)).path)
     if fd < 0 {
       throw AgentServiceError.refused("Cannot open directory without following links: \(path)")
     }
@@ -97,7 +97,7 @@ struct ArtifactFilesystem {
     return canonical
   }
   static func snapshot(
-    _ artifact: Artifact, quietInterval: TimeInterval, now: Date, cancelled: () -> Bool
+    _ artifact: Artifact, quietInterval: TimeInterval, now: Date, cancelled: () -> Bool, validatedKnownContainer: Bool = false
   ) throws -> ArtifactStamp {
     let project = try DirectoryDescriptor(path: artifact.projectPath)
     let root = try DirectoryDescriptor(path: artifact.path)
@@ -162,7 +162,7 @@ struct ArtifactFilesystem {
         markers[name] = node
       }
     }
-    guard !markers.isEmpty else {
+    guard !markers.isEmpty || (validatedKnownContainer && artifact.kind == .xcodeDerivedData) else {
       throw AgentServiceError.refused("No bounded project marker evidence")
     }
     if artifact.kind == .terraformProviders {

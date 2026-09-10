@@ -43,12 +43,13 @@ final class AppModel: ObservableObject {
     }
     @Published var isReviewingDeletion = false
     private let fileOperations: FileOperations
-    var isBusy: Bool { isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
+    var isBusy: Bool { isPreparingCleanup || isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
 
     private let scanner: ArtifactScanner
     private let volumeMonitor: VolumeMonitor
     private let snapshotStore: SnapshotStore
-    private let reclaimer: ArtifactReclaimer
+    private let cleanup: InteractiveCleanup
+    @Published private(set) var isPreparingCleanup = false
     private let homeDirectory: URL
     private let defaults: UserDefaults
     private var scanTask: Task<Void, Never>?
@@ -71,7 +72,7 @@ final class AppModel: ObservableObject {
         self.scanner = scanner
         self.volumeMonitor = volumeMonitor
         self.snapshotStore = snapshotStore
-        self.reclaimer = reclaimer
+        self.cleanup = InteractiveCleanup(validator: reclaimer)
         self.fileOperations = fileOperations
         self.homeDirectory = homeDirectory.standardizedFileURL
         self.defaults = defaults
@@ -222,44 +223,47 @@ final class AppModel: ObservableObject {
         pendingQuickCleanup = snapshot.artifacts.sorted { $0.allocatedBytes > $1.allocatedBytes }
     }
 
-    func reclaimReviewed(_ artifacts: [Artifact]) async {
-        // Keep the confirmation's selection fixed even if the visible filter changes.
-        let current = Dictionary(uniqueKeysWithValues: snapshot.artifacts.map { ($0.id, $0) })
-        await reclaim(artifacts.filter { current[$0.id]?.fileIdentity == $0.fileIdentity })
-    }
-
-    func reclaimSelected() async {
-        let artifacts = selectedArtifacts
-        await reclaim(artifacts)
-    }
-
-    func reclaim(_ artifact: Artifact) async {
-        guard let currentArtifact = snapshot.artifacts.first(where: { $0.id == artifact.id }),
-              currentArtifact.fileIdentity == artifact.fileIdentity else {
-            errorMessage = "Folder missing from scan results. Scan again."
+    func requestCleanup(_ artifacts: [Artifact]) {
+        guard !isBusy, !isReviewingDeletion else {
+            errorMessage = "Wait for the scan or cleanup to finish."
             return
         }
-        await reclaim([currentArtifact])
+        guard !artifacts.isEmpty else { return }
+        isReviewingDeletion = true
+        destination = .reclaim
+        pendingQuickCleanup = artifacts
     }
 
-    private func reclaim(_ artifacts: [Artifact]) async {
-        guard !artifacts.isEmpty else { return }
+    func prepareCleanup(_ artifacts: [Artifact]) async throws -> InteractiveCleanupPlan {
+        guard !isBusy else { throw AgentServiceError.refused("Wait for the scan or cleanup to finish.") }
+        isPreparingCleanup = true
+        defer { isPreparingCleanup = false }
+        let service = cleanup
+        let worker = Task.detached(priority: .utility) {
+            try service.prepare(artifacts, cancelled: { Task.isCancelled })
+        }
+        return try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: { worker.cancel() }
+    }
+
+    func reclaimReviewed(_ plan: InteractiveCleanupPlan) async {
         guard !isBusy else {
             errorMessage = "Wait for the scan or cleanup to finish."
             return
         }
-        let artifactIDs = Set(artifacts.map(\.id))
-        guard reclaimingArtifactIDs.isDisjoint(with: artifactIDs) else {
-            errorMessage = "Folder deletion is already in progress."
-            return
-        }
-
+        let artifactIDs = Set(plan.artifacts.map(\.id))
         reclaimingArtifactIDs.formUnion(artifactIDs)
         defer { reclaimingArtifactIDs.subtract(artifactIDs) }
         errorMessage = nil
         noticeMessage = nil
-
-        let result = await reclaimer.reclaim(artifacts)
+        let service = cleanup
+        let worker = Task.detached(priority: .utility) {
+            service.execute(plan, cancelled: { Task.isCancelled })
+        }
+        let result = await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: { worker.cancel() }
         if !result.reclaimedIDs.isEmpty {
             snapshot = snapshot.removingArtifacts(withIDs: result.reclaimedIDs)
             selectedArtifactIDs.subtract(result.reclaimedIDs)

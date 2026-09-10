@@ -36,7 +36,8 @@ final class ArtifactRulesTests: XCTestCase {
         }
         let scan = try await ArtifactScanner().scan(roots: [root])
         let artifact = try XCTUnwrap(scan.artifacts.first { $0.kind == .terraformProviders })
-        let result = await ArtifactReclaimer().reclaim([artifact])
+        let service = InteractiveCleanup(activity: IdleCleanupTestActivity(), quietInterval: 0, coordinationDirectory: root.appendingPathComponent("coordination"))
+        let result = service.execute(try service.prepare([artifact]))
         XCTAssertEqual(result.reclaimedIDs, [artifact.id])
         for path in ["main.tf", ".terraform.lock.hcl", "terraform.tfstate", ".terraform/terraform.tfstate", ".terraform/environment"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path), path)

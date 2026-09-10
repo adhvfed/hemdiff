@@ -20,6 +20,11 @@ targets:
   DiskSift:
     dependencies:
       - package: HemdiffCore
+    postBuildScripts:
+      - name: Include dependency notices
+        basedOnDependencyAnalysis: false
+        script: |
+          "${SRCROOT}/tools/copy-package-notices.sh" "${BUILD_DIR%/Build/Products}/SourcePackages/checkouts" "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ThirdPartyNotices"
     productName: Hemdiff
     type: application
     platform: macOS

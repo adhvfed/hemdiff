@@ -36,7 +36,6 @@ struct ArtifactIcon: View {
 
 struct ArtifactRow: View {
     @EnvironmentObject private var model: AppModel
-    @State private var confirmsCleanup = false
     let artifact: Artifact
     var selectable = false
 
@@ -94,7 +93,7 @@ struct ArtifactRow: View {
             }
 
             Button {
-                confirmsCleanup = true
+                model.requestCleanup([artifact])
             } label: {
                 if model.reclaimingArtifactIDs.contains(artifact.id) {
                     ProgressView()
@@ -114,20 +113,6 @@ struct ArtifactRow: View {
         }
         .contentShape(Rectangle())
         .padding(.vertical, 11)
-        .confirmationDialog(
-            "Delete \(artifact.kind.folderName) for \(artifact.projectName)?",
-            isPresented: $confirmsCleanup,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Permanently", role: .destructive) {
-                Task { await model.reclaim(artifact) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "\(artifact.path.abbreviatingHome)\n\n\(artifact.kind.consequence)\n\nDeletion skips Trash and cannot be undone."
-            )
-        }
     }
 
     private var createdText: String {

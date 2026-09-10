@@ -36,7 +36,7 @@ final class AppModelTests: XCTestCase {
         try fixture.store.save(snapshot)
         let model = fixture.model()
         model.startScan()
-        await model.reclaim(snapshot.artifacts[0])
+        model.requestCleanup([snapshot.artifacts[0]])
         XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
         XCTAssertNotNil(model.errorMessage)
         model.cancelScan()

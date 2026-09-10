@@ -147,10 +147,12 @@ final class ArtifactReclaimerTests: XCTestCase {
             fileIdentity: try ArtifactFileIdentity.capture(at: nodeModules)
         )
 
-        let result = await ArtifactReclaimer().reclaim([rustArtifact, nodeArtifact])
+        let service = InteractiveCleanup(activity: IdleCleanupTestActivity(), quietInterval: 0, coordinationDirectory: fixture.appendingPathComponent("coordination"))
+        let plan = try service.prepare([rustArtifact, nodeArtifact])
+        let result = service.execute(plan)
 
         XCTAssertEqual(result.reclaimedIDs, [rustArtifact.id, nodeArtifact.id])
-        XCTAssertEqual(result.reclaimedBytes, 18)
+        XCTAssertEqual(result.reclaimedBytes, plan.estimatedBytes)
         XCTAssertTrue(result.failures.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: nodeModules.path))
@@ -264,5 +266,11 @@ final class ArtifactReclaimerTests: XCTestCase {
         XCTAssertThrowsError(try ArtifactReclaimer().validate(artifact)) { error in
             XCTAssertEqual(error as? ReclaimValidationError, .missingProjectMarker)
         }
+    }
+}
+
+struct IdleCleanupTestActivity: ArtifactActivityChecking {
+    func assess(project: URL, artifact: URL) throws -> ActivityAssessment {
+        .init(state: .noDetectedActivity, detail: "Fixture")
     }
 }

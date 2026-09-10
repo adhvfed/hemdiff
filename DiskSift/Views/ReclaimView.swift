@@ -6,6 +6,8 @@ struct ReclaimView: View {
     @State private var search = ""
     @State private var confirmsReclaim = false
     @State private var pending: [Artifact] = []
+    @State private var reviewPlan: InteractiveCleanupPlan?
+    @State private var preparationError: String?
     @State private var groupByProject = true
     @State private var collapsed = Set<String>()
 
@@ -110,7 +112,7 @@ struct ReclaimView: View {
                 }
                 Spacer()
                 Button("Clear") { model.deselectAll() }.disabled(model.selectedArtifactIDs.isEmpty)
-                Button("Delete Build Output…") { pending = model.selectedArtifacts; confirmsReclaim = true }
+                Button("Delete Build Output…") { model.requestCleanup(model.selectedArtifacts) }
                     .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
                     .disabled(model.selectedArtifactIDs.isEmpty || model.isBusy)
             }.padding(.horizontal, 28).padding(.vertical, 18).background(.bar).overlay(alignment: .top) { Divider() }
@@ -119,6 +121,8 @@ struct ReclaimView: View {
         .navigationTitle("Cleanup")
         .onChange(of: model.pendingQuickCleanup, initial: true) { _, requested in
             guard let requested else { return }
+            reviewPlan = nil
+            preparationError = nil
             pending = requested
             model.pendingQuickCleanup = nil
             confirmsReclaim = true
@@ -126,7 +130,7 @@ struct ReclaimView: View {
         .sheet(isPresented: $confirmsReclaim) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Delete build output?").font(.title2.weight(.semibold))
-                Text("\(pending.count) folders · \(ByteText.string(pending.reduce(0) { $0 + $1.allocatedBytes }))").font(.title3)
+                Text("\(pending.count) \(pending.count == 1 ? "folder" : "folders") · \(ByteText.string(reviewPlan?.estimatedBytes ?? pending.reduce(0) { $0 + $1.allocatedBytes })) estimated").font(.title3)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(pending) { artifact in
@@ -137,19 +141,36 @@ struct ReclaimView: View {
                         }
                     }
                 }.frame(maxHeight: 240)
+                if model.isPreparingCleanup {
+                    HStack { ProgressView().controlSize(.small); Text("Checking folders before cleanup…") }
+                }
+                if let preparationError { Text(preparationError).foregroundStyle(.red).textSelection(.enabled) }
                 Text("Stop running builds and dev servers before cleanup. Deletion skips Trash and cannot be undone.").font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Spacer()
                     Button("Cancel") { confirmsReclaim = false }.keyboardShortcut(.cancelAction)
                     Button("Delete Permanently", role: .destructive) {
-                        let reviewed = pending
+                        guard let reviewed = reviewPlan else { return }
                         confirmsReclaim = false
                         Task { await model.reclaimReviewed(reviewed) }
-                    }.buttonStyle(HemdiffButtonStyle(emphasis: .destructive)).disabled(model.isBusy)
+                    }.buttonStyle(HemdiffButtonStyle(emphasis: .destructive)).disabled(model.isBusy || reviewPlan == nil)
                 }
             }.padding(24).frame(width: 560).buttonStyle(HemdiffButtonStyle())
+                .task {
+                    do {
+                        let plan = try await model.prepareCleanup(pending)
+                        try Task.checkCancellation()
+                        reviewPlan = plan
+                    } catch is CancellationError {} catch {
+                        preparationError = error.localizedDescription
+                    }
+                }
                 .onAppear { model.isReviewingDeletion = true }
-                .onDisappear { model.isReviewingDeletion = false }
+                .onDisappear {
+                    model.isReviewingDeletion = false
+                    reviewPlan = nil
+                    pending = []
+                }
         }
     }
 }
