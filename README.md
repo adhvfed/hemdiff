@@ -1,5 +1,7 @@
 # Hemdiff
 
+**Help, my disk is f\*cking full.**
+
 Hemdiff (formerly DiskSift) is a native macOS disk monitor focused on low-overhead visibility and
 safe cleanup of regenerable developer storage: Rust `target`, JavaScript
 `node_modules`, Next.js `.next`, Turbo, Terraform/OpenTofu providers, Python

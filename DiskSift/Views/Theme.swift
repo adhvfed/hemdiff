@@ -95,3 +95,9 @@ struct ReviewEmptyState: View {
         }.frame(maxWidth: .infinity, maxHeight: fillsSpace ? .infinity : nil).padding(24)
     }
 }
+
+/// The name and its expansion belong together on the app's brand surfaces.
+enum HemdiffBrand {
+    static let tagline = "Help, my disk is f*cking full."
+    static let sidebarTagline = "Help, my disk\nis f*cking full."
+}

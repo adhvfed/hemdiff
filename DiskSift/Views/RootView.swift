@@ -54,10 +54,16 @@ struct RootView: View {
                     .padding(.vertical, 3)
             }
             .safeAreaInset(edge: .top) {
-                HStack(spacing: 10) {
-                    Image("BrandMark").resizable().scaledToFit().frame(width: 34, height: 34)
-                    Text("Hemdiff").font(.system(size: 19, weight: .semibold, design: .rounded)).tracking(-0.5)
-                    Spacer()
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 10) {
+                        Image("BrandMark").resizable().scaledToFit().frame(width: 34, height: 34)
+                        Text("Hemdiff").font(.system(size: 19, weight: .semibold, design: .rounded)).tracking(-0.5)
+                        Spacer()
+                    }
+                    Text(verbatim: HemdiffBrand.sidebarTagline)
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                        .lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(HemdiffBrand.tagline)
                 }.padding(.horizontal, 18).padding(.vertical, 16)
             }
             .navigationSplitViewColumnWidth(min: 184, ideal: 206)

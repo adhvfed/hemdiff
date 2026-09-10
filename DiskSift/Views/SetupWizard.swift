@@ -24,6 +24,7 @@ struct SetupWizard: View {
                 Image("BrandMark").resizable().scaledToFit().frame(width: 48, height: 48)
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Choose folders to scan").font(.system(size: 28, weight: .semibold, design: .rounded)).tracking(-0.6)
+                    Text(verbatim: "Hemdiff — \(HemdiffBrand.tagline)").font(.callout).foregroundStyle(.secondary)
                 }
             }
             HStack {
