@@ -7,6 +7,7 @@ import SwiftUI
 /// Selection-following preview. Decode images to the display size, never full resolution.
 struct MediaPreview: View {
     let item: ContentItem
+    var allowsLargeQuickLook = false
     @State private var image: NSImage?
     @State private var player: AVPlayer?
     @State private var loaded = false
@@ -17,9 +18,14 @@ struct MediaPreview: View {
             if item.kind == .images, let image {
                 Image(nsImage: image).resizable().scaledToFit().padding(12)
             } else if (item.kind == .video || item.kind == .audio), let player {
-                VideoPlayer(player: player)
+                NativeMediaPlayer(player: player)
             } else if loaded {
-                QuickLookFile(url: item.url)
+                if item.allocatedBytes > 32 * 1024 * 1024 && !allowsLargeQuickLook {
+                    VStack(spacing: 12) {
+                        Image(systemName: item.kind.icon).font(.system(size: 44)).foregroundStyle(item.kind.color)
+                        Text("Expand to preview").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else { QuickLookFile(url: item.url) }
             } else {
                 ProgressView().controlSize(.small)
             }
@@ -68,7 +74,7 @@ struct FileInspector: View {
                 Button(action: expand) { Image(systemName: "arrow.up.left.and.arrow.down.right") }
                     .help("Expand preview · ⌘Y")
             }
-            MediaPreview(item: item).frame(minHeight: 180, idealHeight: 260, maxHeight: 380)
+            MediaPreview(item: item).frame(height: 220)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             Text(item.url.lastPathComponent).font(.headline).textSelection(.enabled).lineLimit(3)
             HStack {
@@ -101,5 +107,25 @@ struct FileInspector: View {
         }.padding(16).frame(width: 290)
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
             .buttonStyle(HemdiffButtonStyle())
+    }
+}
+
+/// Use AppKit's player directly, avoiding the SwiftUI AVKit overlay's runtime metadata.
+private struct NativeMediaPlayer: NSViewRepresentable {
+    let player: AVPlayer
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .floating
+        view.videoGravity = .resizeAspect
+        view.showsFullScreenToggleButton = true
+        view.player = player
+        return view
+    }
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player { view.player?.pause(); view.player = player }
+    }
+    static func dismantleNSView(_ view: AVPlayerView, coordinator: ()) {
+        view.player?.pause()
+        view.player = nil
     }
 }

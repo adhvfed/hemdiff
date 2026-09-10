@@ -42,7 +42,7 @@ enum ContentKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .applications: "app"
         case .binaries: "terminal"
         case .fonts: "textformat"
-        case .developerData: "externaldrive.badge.gearshape"
+        case .developerData: "tray.2"
         case .logs: "text.alignleft"
         case .other: "doc"
         }

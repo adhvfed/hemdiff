@@ -126,7 +126,7 @@ struct FilePreview: View {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }.padding(16)
-            MediaPreview(item: item)
+            MediaPreview(item: item, allowsLargeQuickLook: true)
             HStack {
                 Label(item.kind.title, systemImage: item.kind.icon)
                 Spacer()

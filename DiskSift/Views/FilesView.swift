@@ -88,6 +88,10 @@ struct FilesView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { selectionTray }
         .navigationTitle("Files")
+        .background {
+            Button("Preview Selected File") { preview = focusedItem }
+                .keyboardShortcut("y", modifiers: .command).disabled(focusedItem == nil).hidden()
+        }
         .onChange(of: review.checked.isEmpty) { _, empty in if empty { checkedOnly = false } }
         .task(id: queryKey) {
             if !review.search.isEmpty { try? await Task.sleep(for: .milliseconds(180)) }
@@ -178,7 +182,7 @@ struct FilesView: View {
                 Toggle("Show Checked Only", isOn: $checkedOnly)
                 Button("Preview Focused File") {
                     if let item = (checkedOnly ? review.checkedItems : review.items).first(where: { review.focused.contains($0.path) }) { preview = item }
-                }.keyboardShortcut("y", modifiers: .command)
+                }
             } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).frame(width: 28)
             Button("Move to Trash…") { confirmation = FileConfirmation(items: review.checkedItems, permanent: false) }
                 .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
