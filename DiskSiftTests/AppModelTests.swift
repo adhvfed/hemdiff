@@ -193,3 +193,44 @@ extension AppModelTests {
         XCTAssertFalse(model.isShowingSetup)
     }
 }
+
+extension AppModelTests {
+    func testKnownExternalRemovalUpdatesPersistedIndexWithoutScanning() async throws {
+        let fixture = try ModelFixture()
+        defer { fixture.remove() }
+        let index = try ContentIndex(path: fixture.url.appendingPathComponent("files.sqlite").path, create: true)
+        let missing = fixture.url.appendingPathComponent("already-deleted.log").path
+        try index.append(ContentItem(path: missing, kind: .logs, allocatedBytes: 50, modifiedAt: nil, isPackage: false))
+        try index.finish()
+        var snapshot = DiskSnapshot.empty
+        snapshot.content = try index.inventory()
+        snapshot.content.errorsSkipped = 7
+        try fixture.store.save(snapshot)
+        let model = fixture.model()
+        await model.reconcileKnownRemovals(visiblePaths: [missing])
+        XCTAssertEqual(model.snapshot.content.count, 0)
+        XCTAssertEqual(model.snapshot.content.errorsSkipped, 7)
+        XCTAssertEqual(try index.inventory().count, 0)
+        XCTAssertEqual(try fixture.store.load()?.content.count, 0)
+        XCTAssertFalse(model.isScanning)
+        XCTAssertTrue(model.removedContentPaths.contains(missing))
+    }
+
+    func testClassificationStartupRepairsStaleSummaryEvenWithCurrentIndex() async throws {
+        let fixture = try ModelFixture()
+        defer { fixture.remove() }
+        let index = try ContentIndex(path: fixture.url.appendingPathComponent("files.sqlite").path, create: true)
+        try index.append(ContentItem(path: "/fixture/lib.so", kind: .binaries, allocatedBytes: 50, modifiedAt: nil, isPackage: false))
+        try index.finish()
+        var snapshot = DiskSnapshot.empty
+        snapshot.content.indexPath = index.path
+        snapshot.content.errorsSkipped = 4
+        try fixture.store.save(snapshot)
+        let model = fixture.model()
+        await model.upgradeClassification()
+        XCTAssertEqual(model.snapshot.content.count, 1)
+        XCTAssertEqual(model.snapshot.content.summaries.first?.kind, .binaries)
+        XCTAssertEqual(model.snapshot.content.errorsSkipped, 4)
+        XCTAssertEqual(try fixture.store.load()?.content.count, 1)
+    }
+}

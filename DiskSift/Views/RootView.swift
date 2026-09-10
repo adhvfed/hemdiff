@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 enum AppDestination: String, CaseIterable, Identifiable {
     case overview
@@ -94,6 +95,15 @@ struct RootView: View {
                 Color(nsColor: .windowBackgroundColor)
                     .ignoresSafeArea()
             }
+        }
+        .onChange(of: model.removedContentPaths) { _, paths in
+            let checked = Set(fileReview.checked.keys.filter { file in
+                paths.contains { file == $0 || file.hasPrefix($0 + "/") }
+            })
+            fileReview.removeChecked(checked)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await model.reconcileKnownRemovals(visiblePaths: fileReview.items.map(\.path)) }
         }
         .sheet(isPresented: $model.isShowingSetup) {
             SetupWizard().environmentObject(model).interactiveDismissDisabled()

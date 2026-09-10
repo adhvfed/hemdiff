@@ -1,4 +1,5 @@
 import Combine
+import Darwin
 import Foundation
 
 @MainActor
@@ -19,6 +20,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isLoadingTrash = false
     @Published private(set) var isManagingFiles = false
     @Published private(set) var contentRevision = 0
+    @Published private(set) var removedContentPaths = Set<String>()
+    @Published private(set) var isUpdatingInventory = false
     @Published var isShowingSetup = false
     @Published var setupPage = 0 {
         didSet { defaults.set(setupPage, forKey: "setupPage") }
@@ -43,7 +46,7 @@ final class AppModel: ObservableObject {
     }
     @Published var isReviewingDeletion = false
     private let fileOperations: FileOperations
-    var isBusy: Bool { isPreparingCleanup || isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
+    var isBusy: Bool { isUpdatingInventory || isPreparingCleanup || isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
 
     private let scanner: ArtifactScanner
     private let volumeMonitor: VolumeMonitor
@@ -108,6 +111,7 @@ final class AppModel: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
+            await self.upgradeClassification()
             await self.refreshTrash()
             if self.snapshot.finishedAt == .distantPast || self.isSnapshotStale {
                 self.startScan()
@@ -267,7 +271,7 @@ final class AppModel: ObservableObject {
         if !result.reclaimedIDs.isEmpty {
             snapshot = snapshot.removingArtifacts(withIDs: result.reclaimedIDs)
             selectedArtifactIDs.subtract(result.reclaimedIDs)
-            try? snapshotStore.save(snapshot)
+            await reconcileRemovedPaths(plan.artifacts.filter { result.reclaimedIDs.contains($0.id) }.map(\.path))
             refreshVolume()
             noticeMessage = "Deleted \(result.reclaimedIDs.count) folder\(result.reclaimedIDs.count == 1 ? "" : "s") (\(ByteText.compact(result.reclaimedBytes)))."
         }
@@ -292,21 +296,13 @@ final class AppModel: ObservableObject {
         errorMessage = nil
         noticeMessage = nil
         let result = await fileOperations.moveToTrash(items, allowedRoots: scanRoots)
-        if let path = snapshot.content.indexPath, !result.succeeded.isEmpty {
-            do {
-                snapshot.content = try await Task.detached(priority: .utility) {
-                    let index = try ContentIndex(path: path)
-                    try index.remove(paths: result.succeeded.map(\.path))
-                    return try index.inventory()
-                }.value
-                try snapshotStore.save(snapshot)
-            } catch { errorMessage = "Files moved, but the inventory couldn’t be updated. Scan again." }
-        }
-        contentRevision += 1
+        if !result.succeeded.isEmpty { await reconcileRemovedPaths(result.succeeded.map(\.path)) }
         if !result.succeeded.isEmpty {
             noticeMessage = "Moved \(result.succeeded.count) items to Trash. Empty Trash to recover space."
         }
         reportFileFailures(result)
+        let removed = Set(result.succeeded.map(\.path))
+        trashSnapshot.items.removeAll { removed.contains($0.path) }
         trashSnapshot = await fileOperations.measureTrash()
         refreshVolume()
         return Set(result.succeeded.map(\.path))
@@ -321,9 +317,75 @@ final class AppModel: ObservableObject {
         let result = await fileOperations.deleteFromTrash(items, roots: trashSnapshot.roots)
         if !result.succeeded.isEmpty { noticeMessage = "Permanently deleted \(result.succeeded.count) items from Trash." }
         reportFileFailures(result)
+        let removed = Set(result.succeeded.map(\.path))
+        trashSnapshot.items.removeAll { removed.contains($0.path) }
         trashSnapshot = await fileOperations.measureTrash()
         refreshVolume()
         return Set(result.succeeded.map(\.path))
+    }
+
+    /// Reconcile successful operations by path, never by rerunning discovery.
+    private func reconcileRemovedPaths(_ paths: [String]) async {
+        guard !paths.isEmpty else { return }
+        removedContentPaths.formUnion(paths)
+        let coverageErrors = snapshot.content.errorsSkipped
+        snapshot.content = snapshot.content.removing(paths: paths)
+        contentRevision += 1
+        if let path = snapshot.content.indexPath {
+            do {
+                let inventory = try await Task.detached(priority: .utility) {
+                    let index = try ContentIndex(path: path)
+                    try index.remove(paths: paths)
+                    return try index.inventory()
+                }.value
+                snapshot.content = inventory
+                snapshot.content.errorsSkipped = coverageErrors
+                contentRevision += 1
+            } catch { errorMessage = "Items removed, but the saved file index could not be updated." }
+        }
+        do { try snapshotStore.save(snapshot) }
+        catch { errorMessage = "Items removed, but the updated inventory could not be saved." }
+    }
+
+    func upgradeClassification() async {
+        guard !isBusy, let path = snapshot.content.indexPath else { return }
+        isUpdatingInventory = true
+        defer { isUpdatingInventory = false }
+        let coverageErrors = snapshot.content.errorsSkipped
+        let pendingRemovals = snapshot.content.removedPaths ?? []
+        do {
+            let inventory = try await Task.detached(priority: .utility) {
+                let index = try ContentIndex(path: path)
+                if !pendingRemovals.isEmpty { try index.remove(paths: pendingRemovals) }
+                _ = try index.reclassifyIfNeeded()
+                return try index.inventory()
+            }.value
+            snapshot.content = inventory
+            snapshot.content.errorsSkipped = coverageErrors
+            contentRevision += 1
+            try snapshotStore.save(snapshot)
+        } catch { errorMessage = "Couldn’t update saved file classifications." }
+    }
+
+    /// Catch CLI/MCP removals when returning to the app, plus the currently visible file page.
+    /// Only ENOENT is disappearance; permission failures never erase inventory entries.
+    func reconcileKnownRemovals(visiblePaths: [String] = []) async {
+        guard !isBusy, !isReviewingDeletion else { return }
+        isUpdatingInventory = true
+        defer { isUpdatingInventory = false }
+        let paths = Set(snapshot.artifacts.map(\.path) + visiblePaths)
+        let missing = await Task.detached(priority: .utility) {
+            paths.filter { path in
+                var info = stat()
+                return lstat(path, &info) != 0 && errno == ENOENT
+            }
+        }.value
+        guard !missing.isEmpty else { refreshVolume(); return }
+        let ids = Set(snapshot.artifacts.filter { missing.contains($0.path) }.map(\.id))
+        snapshot = snapshot.removingArtifacts(withIDs: ids)
+        selectedArtifactIDs.subtract(ids)
+        await reconcileRemovedPaths(Array(missing))
+        refreshVolume()
     }
 
     private func reportFileFailures(_ result: FileOperationResult) {

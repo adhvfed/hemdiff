@@ -78,6 +78,32 @@ final class FileOperationsTests: XCTestCase {
         XCTAssertThrowsError(try FileOperations().validate(item))
     }
 
+    func testTrashMoveRechecksGitAfterBrowsingAndKeepsTrackedSource() async throws {
+        let root = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try makeItem(root.appendingPathComponent("source.log"))
+        let output = try makeItem(root.appendingPathComponent("output.log"))
+        func git(_ arguments: [String]) throws {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            process.arguments = ["-C", root.path] + arguments
+            try process.run()
+            process.waitUntilExit()
+            XCTAssertEqual(process.terminationStatus, 0)
+        }
+        try git(["init", "-q"])
+        let hint = await FileGitProtection().statuses(for: [source, output])
+        XCTAssertEqual(hint[source.path], .untracked)
+        try git(["add", "source.log"])
+        let destination = root.appendingPathComponent("moved.log")
+        let result = await FileOperations(trashItem: { url in
+            try FileManager.default.moveItem(at: url, to: destination)
+        }).moveToTrash([source, output], allowedRoots: [root])
+        XCTAssertEqual(result.succeeded.map(\.path), [output.path])
+        XCTAssertNotNil(result.failures[source.path])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
     private func fixture() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("DiskSiftFileOps-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

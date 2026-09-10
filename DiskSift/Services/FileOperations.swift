@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import HemdiffCore
 
 struct FileStamp: Codable, Hashable, Sendable {
     let device: Int64
@@ -43,19 +44,30 @@ struct FileOperations: Sendable {
     }
 
     func moveToTrash(_ items: [ContentItem], allowedRoots: [URL]) async -> FileOperationResult {
-        await Task.detached(priority: .utility) {
+        let work = Task.detached(priority: .utility) {
             var result = FileOperationResult()
+            let tracking = GitTracking.statuses(for: items.map(\.url), cancelled: { Task.isCancelled })
             for item in items {
                 do {
+                    try Task.checkCancellation()
                     guard allowedRoots.contains(where: { PathSafety.contains(item.url, in: $0) }),
                           !item.url.pathComponents.contains(".Trash"), !item.url.pathComponents.contains(".Trashes") else { throw CocoaError(.fileWriteNoPermission) }
                     try validate(item)
+                    guard tracking[item.path] == .untracked else {
+                        let message = tracking[item.path] == .tracked
+                            ? "Git-tracked files are protected. Remove this item from Git before moving it to Trash."
+                            : "Git tracking could not be verified. This item was not moved."
+                        throw NSError(domain: "Hemdiff.GitProtection", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+                    }
                     try trashItem(item.url)
                     result.succeeded.append(item)
                 } catch { result.failures[item.path] = error.localizedDescription }
             }
             return result
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            await work.value
+        } onCancel: { work.cancel() }
     }
 
     func trashRoots() -> [URL] {

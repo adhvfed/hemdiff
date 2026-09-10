@@ -8,6 +8,10 @@ struct FilesView: View {
     @State private var confirmation: FileConfirmation?
     @State private var preview: ContentItem?
     @State private var checkedOnly = false
+    @State private var showInspector = true
+    private var focusedItem: ContentItem? {
+        (checkedOnly ? review.checkedItems : review.items).first { review.focused.contains($0.path) }
+    }
 
     private var inventory: ContentInventory { model.snapshot.content }
     private var queryKey: String { "\(model.contentRevision)|\(inventory.indexPath ?? "")|\(review.kinds.map(\.rawValue).sorted())|\(review.search)|\(review.order.rawValue)" }
@@ -20,6 +24,13 @@ struct FilesView: View {
                     Text("\(inventory.count.formatted()) items · \(ByteText.string(inventory.allocatedBytes))")
                         .font(.callout).foregroundStyle(.secondary)
                     Spacer()
+                    if geometry.size.width > 1050 {
+                        Toggle(isOn: $showInspector) { Image(systemName: "sidebar.right") }
+                            .toggleStyle(.button).help("Show preview inspector")
+                    } else {
+                        Button { preview = focusedItem } label: { Image(systemName: "eye") }
+                            .disabled(focusedItem == nil).help("Preview selected file")
+                    }
                     Button("Scan Locations", action: openLocations)
                 }
                 ModelMessages()
@@ -48,7 +59,8 @@ struct FilesView: View {
                             FileItemTable(items: checkedOnly ? review.checkedItems : review.items,
                                           focused: $review.focused, checked: Set(review.checked.keys),
                                           toggle: review.toggle, toggleFocused: toggleFocused,
-                                          preview: { preview = $0 }, compact: geometry.size.width <= 760)
+                                          preview: { preview = $0 }, compact: geometry.size.width <= 1050, protection: review.protection,
+                                          checkProtection: { item in Task { await review.checkProtection(item) } })
                                 .overlay {
                                     if review.isLoading { ProgressView().padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10)) }
                                     else if !checkedOnly && review.items.isEmpty { ContentUnavailableView.search(text: review.search) }
@@ -63,6 +75,12 @@ struct FilesView: View {
                                     .disabled(checkedOnly || review.offset + review.pageSize >= review.count || review.isLoading).help("Next page")
                             }
                         }
+                        if showInspector, geometry.size.width > 1050, let item = focusedItem {
+                            FileInspector(item: item, protection: review.protection[item.path],
+                                          checked: review.checked[item.path] != nil,
+                                          toggle: { review.toggle(item) }, expand: { preview = item },
+                                          checkProtection: { Task { await review.checkProtection(item) } })
+                        }
                     }
                 }
             }
@@ -71,7 +89,12 @@ struct FilesView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { selectionTray }
         .navigationTitle("Files")
         .onChange(of: review.checked.isEmpty) { _, empty in if empty { checkedOnly = false } }
-        .task(id: queryKey) { await review.load(inventory) }
+        .task(id: queryKey) {
+            if !review.search.isEmpty { try? await Task.sleep(for: .milliseconds(180)) }
+            guard !Task.isCancelled else { return }
+            await review.load(inventory)
+        }
+
         .sheet(item: $confirmation) { pending in
             FileConfirmationSheet(confirmation: pending) {
                 Task {
@@ -138,7 +161,7 @@ struct FilesView: View {
             Image(systemName: "checkmark.circle.fill").font(.title2).foregroundStyle(DiskSiftTheme.node)
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(review.checked.count) checked · \(ByteText.string(review.checkedBytes))").font(.callout.weight(.semibold)).monospacedDigit()
-                Text("↑ ↓ navigate · Space check · ⌘Y preview").font(.caption).foregroundStyle(.secondary)
+                Text("↑ ↓ navigate · Space check · ⌘Y preview · Git-tracked files protected").font(.caption).foregroundStyle(.secondary)
             }
         }
     }

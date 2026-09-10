@@ -10,7 +10,16 @@ final class ContentClassificationTests: XCTestCase {
             ("disk.qcow2", .virtualMachines), ("weights.safetensors", .models),
             ("model.GGUF", .models), ("rows.parquet", .databases), ("index.sqlite", .databases),
             ("main.rs", .sourceCode), ("Dockerfile", .sourceCode), (".env", .sourceCode),
-            ("mystery.bin", .other), ("unknown", .other)
+            ("mystery.bin", .other), ("unknown", .other),
+            ("libtorch_cpu.dylib", .binaries), ("libfoo.so.3.1", .binaries),
+            ("terraform-provider-kubernetes", .binaries), ("worker.node", .binaries),
+            ("model.bin", .other), ("pytorch_model.bin", .models),
+            ("data.npz", .databases), ("cache.sqlite-wal", .databases),
+            (".env.production", .sourceCode), ("CMakeLists.txt", .sourceCode),
+            ("component.svelte", .sourceCode), ("socket.log.2026-09-10.gz", .logs),
+            ("parse.log.swift", .sourceCode), ("Inter.woff2", .fonts), ("LICENSE", .documents),
+            ("/workspace/.metadata/.plugins/org.eclipse.jdt.core/123.index", .developerData),
+            ("/workspace/user.index", .other)
         ]
         for (name, expected) in cases {
             XCTAssertEqual(ContentKind.classify(URL(fileURLWithPath: name)), expected, name)

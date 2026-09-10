@@ -9,7 +9,9 @@
 /* Begin PBXBuildFile section */
 		0A4D0DD31B0083515A09C5A7 /* ProjectLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649880903AC932A26F73CF32 /* ProjectLocator.swift */; };
 		0E46D833FFF890F595FA0892 /* AppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB91DBE5722A4DD2827C70C /* AppModelTests.swift */; };
+		17316BB620BED67B2A0535FD /* MediaPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39CC7FF09334A337238D52A /* MediaPreview.swift */; };
 		17D3DF0755ADCFCE8049DDCB /* ArtifactRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5829470B209EF8B9E786FFE /* ArtifactRulesTests.swift */; };
+		1BFD723376FF5252495A970A /* ContentIndexUpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD2AE316CB4B6E2CB2C0A5D /* ContentIndexUpdateTests.swift */; };
 		22112AACEF17C29F0531E235 /* SnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BFF2AA42CF3BD51D0BAD36 /* SnapshotStoreTests.swift */; };
 		233EC869514BD71F958BA525 /* DiskModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02653E1EDC2C1E86E585DD3B /* DiskModels.swift */; };
 		2489A82CAAFD38FC3B5FBCED /* GitWorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BED88FB30A53D0D3A770BBFE /* GitWorktreeTests.swift */; };
@@ -18,6 +20,7 @@
 		376DBE063CBAA8BDD43EBE3C /* FindProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C10D5C1DD58AEDC83D24F3 /* FindProjectsView.swift */; };
 		38D82AD788FC7313E555598F /* FileReviewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BABE629CB9AF63A00D4CFA86 /* FileReviewModelTests.swift */; };
 		3A0727528605917EA3BDF2E8 /* ArtifactScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA9152DC80AD2CDC659899AF /* ArtifactScanner.swift */; };
+		3B14138D5004B4582983BCB3 /* FileGitProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E81775606F72D2842244F8A /* FileGitProtection.swift */; };
 		3B27C0524EA6046B5B984666 /* ContentIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C8AC13B034FC5393560317B /* ContentIndex.swift */; };
 		3CE8187B772E49711C708B48 /* ManagementComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDABE96C32373F37155A8830 /* ManagementComponents.swift */; };
 		403BCBA655C9C7E6A7334B10 /* GitRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97FF593F67F3568BA342CEE2 /* GitRepository.swift */; };
@@ -77,9 +80,11 @@
 		18F012DA0114BDD88AC00A52 /* ArtifactScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactScannerTests.swift; sourceTree = "<group>"; };
 		1923607C43ED579DD56D3B11 /* DiskSiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DiskSiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A4C211DCE0D8C73A8712F56 /* SetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupTests.swift; sourceTree = "<group>"; };
+		1CD2AE316CB4B6E2CB2C0A5D /* ContentIndexUpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentIndexUpdateTests.swift; sourceTree = "<group>"; };
 		2154378CBB69224370014C43 /* ProjectSuggestionSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSuggestionSelectionTests.swift; sourceTree = "<group>"; };
 		34EA043F9976A3F70D351B58 /* SystemSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemSettings.swift; sourceTree = "<group>"; };
 		373FB5B8014253444628BABB /* FileReviewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileReviewModel.swift; sourceTree = "<group>"; };
+		3E81775606F72D2842244F8A /* FileGitProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileGitProtection.swift; sourceTree = "<group>"; };
 		433FE09B066DE4CE6FEE6C74 /* SnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStore.swift; sourceTree = "<group>"; };
 		4CA0E4A675AD75787A15990B /* ScanProcessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProcessTests.swift; sourceTree = "<group>"; };
 		50017B0DB86D22AA4CE08F66 /* ProjectSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSuggestions.swift; sourceTree = "<group>"; };
@@ -108,6 +113,7 @@
 		BED88FB30A53D0D3A770BBFE /* GitWorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitWorktreeTests.swift; sourceTree = "<group>"; };
 		C7B61F281ECB92DDEA0CC136 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		CC57B041B831E786C853C5E9 /* FilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesView.swift; sourceTree = "<group>"; };
+		D39CC7FF09334A337238D52A /* MediaPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPreview.swift; sourceTree = "<group>"; };
 		E064EAE369876CFE1B053B06 /* SetupWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupWizard.swift; sourceTree = "<group>"; };
 		E5829470B209EF8B9E786FFE /* ArtifactRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactRulesTests.swift; sourceTree = "<group>"; };
 		E8BFF2AA42CF3BD51D0BAD36 /* SnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStoreTests.swift; sourceTree = "<group>"; };
@@ -139,6 +145,7 @@
 				F2C10D5C1DD58AEDC83D24F3 /* FindProjectsView.swift */,
 				FDDB16EE8491BB76E6C0E06B /* LocationsView.swift */,
 				FDABE96C32373F37155A8830 /* ManagementComponents.swift */,
+				D39CC7FF09334A337238D52A /* MediaPreview.swift */,
 				0780BAE8B2390AC585A87294 /* MenuBarPanel.swift */,
 				C7B61F281ECB92DDEA0CC136 /* OverviewView.swift */,
 				7CC81E815A7FA4828441B1F6 /* ReclaimView.swift */,
@@ -190,6 +197,7 @@
 				E5829470B209EF8B9E786FFE /* ArtifactRulesTests.swift */,
 				18F012DA0114BDD88AC00A52 /* ArtifactScannerTests.swift */,
 				901A9E8FAE8C5F22BFAC5226 /* ContentClassificationTests.swift */,
+				1CD2AE316CB4B6E2CB2C0A5D /* ContentIndexUpdateTests.swift */,
 				05BF02622486A13BB8411A80 /* FileOperationsTests.swift */,
 				BABE629CB9AF63A00D4CFA86 /* FileReviewModelTests.swift */,
 				BED88FB30A53D0D3A770BBFE /* GitWorktreeTests.swift */,
@@ -208,6 +216,7 @@
 			children = (
 				EA9152DC80AD2CDC659899AF /* ArtifactScanner.swift */,
 				9C8AC13B034FC5393560317B /* ContentIndex.swift */,
+				3E81775606F72D2842244F8A /* FileGitProtection.swift */,
 				613DB89808CB2584FB359151 /* FileOperations.swift */,
 				97FF593F67F3568BA342CEE2 /* GitRepository.swift */,
 				649880903AC932A26F73CF32 /* ProjectLocator.swift */,
@@ -384,6 +393,7 @@
 				17D3DF0755ADCFCE8049DDCB /* ArtifactRulesTests.swift in Sources */,
 				9480D06BC464EB458D9B4C46 /* ArtifactScannerTests.swift in Sources */,
 				F94765B0F9F3DFEEE62BE2A4 /* ContentClassificationTests.swift in Sources */,
+				1BFD723376FF5252495A970A /* ContentIndexUpdateTests.swift in Sources */,
 				4B6BBB1AD55F5333AE46F0AC /* FileOperationsTests.swift in Sources */,
 				38D82AD788FC7313E555598F /* FileReviewModelTests.swift in Sources */,
 				2489A82CAAFD38FC3B5FBCED /* GitWorktreeTests.swift in Sources */,
@@ -407,6 +417,7 @@
 				A0FDFDBF589820B04B7936F0 /* ContentModels.swift in Sources */,
 				233EC869514BD71F958BA525 /* DiskModels.swift in Sources */,
 				5D8CEA16195E073FE7EFCC6F /* DiskSiftApp.swift in Sources */,
+				3B14138D5004B4582983BCB3 /* FileGitProtection.swift in Sources */,
 				AA12F76AAB710C6762400E0E /* FileOperations.swift in Sources */,
 				9CBDC9D872369DDC5F656273 /* FileReviewModel.swift in Sources */,
 				DF368F90E04C57D2AA7BD6E4 /* FilesView.swift in Sources */,
@@ -415,6 +426,7 @@
 				666B59EF3CBD9F90473E64D1 /* HemdiffCore.swift in Sources */,
 				4A8E78D564DA9C4F3F710635 /* LocationsView.swift in Sources */,
 				3CE8187B772E49711C708B48 /* ManagementComponents.swift in Sources */,
+				17316BB620BED67B2A0535FD /* MediaPreview.swift in Sources */,
 				C8516DFBCF033EB2F8DAD152 /* MenuBarController.swift in Sources */,
 				2AF68A0B38E4A326ED5B38AA /* MenuBarPanel.swift in Sources */,
 				5CED118A6B5316E4FFDF5543 /* OverviewView.swift in Sources */,

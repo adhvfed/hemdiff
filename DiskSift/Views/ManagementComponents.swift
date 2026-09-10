@@ -10,9 +10,9 @@ extension ContentKind {
         case .archives, .diskImages: DiskSiftTheme.rust
         case .logs: .orange
         case .sourceCode, .models: DiskSiftTheme.node
-        case .virtualMachines, .applications: .blue
-        case .databases: .indigo
-        case .documents: .cyan
+        case .virtualMachines, .applications, .binaries: .blue
+        case .databases, .developerData: .indigo
+        case .documents, .fonts: .cyan
         case .other: .secondary
         }
     }
@@ -56,6 +56,8 @@ struct FileItemTable: View {
     let toggleFocused: () -> Void
     let preview: (ContentItem) -> Void
     var compact = false
+    var protection: [String: FileGitStatus]? = nil
+    var checkProtection: ((ContentItem) -> Void)? = nil
 
     var body: some View {
         Table(items, selection: $focused) {
@@ -65,13 +67,20 @@ struct FileItemTable: View {
                         .font(.system(size: 16)).foregroundStyle(checked.contains(item.path) ? DiskSiftTheme.node : .secondary)
                 }
                 .buttonStyle(.plain)
+                .disabled(protection != nil && protection?[item.path] != .untracked && !checked.contains(item.path))
+                .help(protection?[item.path] == .tracked ? "Protected by Git" : "Check for moving to Trash")
                 .accessibilityLabel("\(checked.contains(item.path) ? "Uncheck" : "Check") \(item.url.lastPathComponent)")
             }.width(24)
             TableColumn("File") { item in
                 HStack(spacing: 10) {
                     Image(systemName: item.kind.icon).font(.system(size: 18)).foregroundStyle(item.kind.color).frame(width: 24)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(item.url.lastPathComponent).font(.callout.weight(.medium)).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(item.url.lastPathComponent).font(.callout.weight(.medium)).lineLimit(1)
+                            if protection?[item.path] == .tracked {
+                                Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.orange).help("Protected by Git")
+                            }
+                        }
                         Text(item.url.deletingLastPathComponent().path.abbreviatingHome)
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     }
@@ -91,6 +100,9 @@ struct FileItemTable: View {
         .contextMenu(forSelectionType: String.self) { ids in
             if let item = items.first(where: { ids.contains($0.path) }) {
                 Button("Preview") { preview(item) }
+                if protection?[item.path] == .unknown, let checkProtection {
+                    Button("Check Protection") { checkProtection(item) }
+                }
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
                 Button("Copy Path") {
                     NSPasteboard.general.clearContents()
@@ -114,12 +126,17 @@ struct FilePreview: View {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }.padding(16)
-            QuickLookFile(url: item.url)
-        }.frame(minWidth: 560, minHeight: 420).buttonStyle(HemdiffButtonStyle())
+            MediaPreview(item: item)
+            HStack {
+                Label(item.kind.title, systemImage: item.kind.icon)
+                Spacer()
+                Text(ByteText.string(item.allocatedBytes)).monospacedDigit()
+            }.font(.caption).foregroundStyle(.secondary).padding(16)
+        }.frame(width: 800, height: 600).buttonStyle(HemdiffButtonStyle())
     }
 }
 
-private struct QuickLookFile: NSViewRepresentable {
+struct QuickLookFile: NSViewRepresentable {
     let url: URL
     func makeNSView(context: Context) -> QLPreviewView {
         let view = QLPreviewView(frame: .zero, style: .normal)!
@@ -127,7 +144,10 @@ private struct QuickLookFile: NSViewRepresentable {
         view.previewItem = url as NSURL
         return view
     }
-    func updateNSView(_ view: QLPreviewView, context: Context) { view.previewItem = url as NSURL }
+    func updateNSView(_ view: QLPreviewView, context: Context) {
+        if (view.previewItem as? NSURL) != url as NSURL { view.previewItem = url as NSURL }
+    }
+    static func dismantleNSView(_ view: QLPreviewView, coordinator: ()) { view.close() }
 }
 
 struct FileConfirmation: Identifiable {

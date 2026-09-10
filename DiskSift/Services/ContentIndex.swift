@@ -82,11 +82,12 @@ final class ContentIndex {
         try execute("COMMIT; CREATE INDEX by_size ON files(bytes DESC, path); CREATE INDEX by_kind ON files(kind, bytes DESC); CREATE INDEX by_name ON files(name COLLATE NOCASE, path);")
         sqlite3_finalize(insertStatement)
         insertStatement = nil
+        try execute("PRAGMA user_version=\(ContentKind.classificationVersion)")
     }
 
-    func page(kinds: Set<ContentKind>, search: String, order: FileOrder, offset: Int, limit: Int = 250) throws -> ContentPage {
+    func page(kinds: Set<ContentKind>, search: String, order: FileOrder, offset: Int, limit: Int = 250, excluding removedPaths: [String] = []) throws -> ContentPage {
         let types = kinds.map(\.rawValue).sorted()
-        let filter = (types.isEmpty ? "1" : "kind IN (\(types.map { _ in "?" }.joined(separator: ",")))")
+        var filter = (types.isEmpty ? "1" : "kind IN (\(types.map { _ in "?" }.joined(separator: ",")))")
             + " AND instr(lower(path),lower(?)) > 0"
         let ordering: String
         switch order {
@@ -95,7 +96,11 @@ final class ContentIndex {
         case .modified: ordering = "modified DESC, path"
         case .path: ordering = "path COLLATE NOCASE"
         }
-        let values = types + [search]
+        var values = types + [search]
+        for removed in removedPaths {
+            filter += " AND NOT (path = ? OR (path >= ? AND path < ?))"
+            values += [removed, removed + "/", removed + "0"]
+        }
         let countRows = try rows("SELECT count(*) FROM files WHERE \(filter)", values: values) { Int(sqlite3_column_int64($0, 0)) }
         let items = try rows("SELECT item FROM files WHERE \(filter) ORDER BY \(ordering) LIMIT \(max(1, limit)) OFFSET \(max(0, offset))", values: values, decode)
         return ContentPage(items: items, count: countRows.first ?? 0)
@@ -104,8 +109,46 @@ final class ContentIndex {
     func remove(paths: [String]) throws {
         try execute("BEGIN TRANSACTION")
         do {
-            for path in paths { _ = try rows("DELETE FROM files WHERE path = ?", values: [path]) { _ in 0 } }
+            for path in Set(paths) {
+                // A binary range uses the primary-key index and treats %, _ and quotes literally.
+                let prefix = path.hasSuffix("/") ? path : path + "/"
+                _ = try rows("DELETE FROM files WHERE path = ? OR (path >= ? AND path < ?)",
+                             values: [path, prefix, String(prefix.dropLast()) + "0"]) { _ in 0 }
+            }
             try execute("COMMIT")
+        } catch { try? execute("ROLLBACK"); throw error }
+    }
+
+    /// Upgrade classification from indexed paths only. No directory walk or file reads.
+    func reclassifyIfNeeded() throws -> Bool {
+        let version = try rows("PRAGMA user_version", values: []) { sqlite3_column_int($0, 0) }.first ?? 0
+        guard version < ContentKind.classificationVersion else { return false }
+        try execute("BEGIN IMMEDIATE")
+        do {
+            var cursor = ""
+            while true {
+                let batch = try rows("SELECT item FROM files WHERE path > ? ORDER BY path LIMIT 1000", values: [cursor], decode)
+                guard !batch.isEmpty else { break }
+                for item in batch {
+                    let kind = ContentKind.classify(item.url, isDirectory: item.isPackage)
+                    if kind != item.kind {
+                        let updated = ContentItem(path: item.path, kind: kind, allocatedBytes: item.allocatedBytes,
+                                                  modifiedAt: item.modifiedAt, isPackage: item.isPackage, stamp: item.stamp)
+                        let data = try encoder.encode(updated)
+                        var statement: OpaquePointer?
+                        guard sqlite3_prepare_v2(database, "UPDATE files SET kind=?, item=? WHERE path=?", -1, &statement, nil) == SQLITE_OK,
+                              let statement else { throw failure() }
+                        defer { sqlite3_finalize(statement) }
+                        bind(kind.rawValue, to: statement, at: 1)
+                        _ = data.withUnsafeBytes { sqlite3_bind_blob(statement, 2, $0.baseAddress, Int32(data.count), transient) }
+                        bind(item.path, to: statement, at: 3)
+                        guard sqlite3_step(statement) == SQLITE_DONE else { throw failure() }
+                    }
+                }
+                cursor = batch.last!.path
+            }
+            try execute("PRAGMA user_version=\(ContentKind.classificationVersion); COMMIT")
+            return true
         } catch { try? execute("ROLLBACK"); throw error }
     }
 
