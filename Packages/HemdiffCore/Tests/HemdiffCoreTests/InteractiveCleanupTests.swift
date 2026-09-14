@@ -9,6 +9,12 @@ private struct IdleInteractiveActivity: ArtifactActivityChecking {
   }
 }
 
+private struct BusyInteractiveActivity: ArtifactActivityChecking {
+  func assess(project: URL, artifact: URL) throws -> ActivityAssessment {
+    .init(state: .busy, detail: "A process has build output open")
+  }
+}
+
 private final class SlowFinalInspection: ArtifactActivityChecking, @unchecked Sendable {
   private var calls = 0
   func assess(project: URL, artifact: URL) throws -> ActivityAssessment {
@@ -37,6 +43,65 @@ final class InteractiveCleanupTests: XCTestCase {
         fileIdentity: try ArtifactFileIdentity.capture(at: output))
     )
   }
+  func testExplicitOverrideDeletesBusyRecentOutputAndChangesAfterReview() throws {
+    let (home, artifact) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let service = InteractiveCleanup(
+      activity: BusyInteractiveActivity(),
+      coordinationDirectory: home.appendingPathComponent("coordination"))
+    XCTAssertThrowsError(try service.prepare([artifact]))
+    let plan = try service.prepare([artifact], allowingActiveOutput: true)
+    XCTAssertTrue(plan.allowsActiveOutput)
+    try Data("new build output".utf8).write(to: artifact.url.appendingPathComponent("output"))
+    try Data("another file".utf8).write(to: artifact.url.appendingPathComponent("new-output"))
+    let result = service.execute(plan)
+    XCTAssertEqual(result.reclaimedIDs, [artifact.id])
+    XCTAssertTrue(result.failures.isEmpty)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: artifact.path))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: artifact.projectURL.appendingPathComponent("package.json").path))
+  }
+
+  func testOverrideRejectsReplacedRoot() throws {
+    let (home, artifact) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let service = InteractiveCleanup(activity: BusyInteractiveActivity(),
+      coordinationDirectory: home.appendingPathComponent("coordination"))
+    let plan = try service.prepare([artifact], allowingActiveOutput: true)
+    try FileManager.default.moveItem(at: artifact.url, to: home.appendingPathComponent("original"))
+    try FileManager.default.createDirectory(at: artifact.url, withIntermediateDirectories: true)
+    try Data("replacement".utf8).write(to: artifact.url.appendingPathComponent("keep"))
+    XCTAssertTrue(service.execute(plan).reclaimedIDs.isEmpty)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: artifact.url.appendingPathComponent("keep").path))
+  }
+
+  func testOverrideDoesNotFollowSymlinkAndRejectsNestedVersionControl() throws {
+    let (home, artifact) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let outside = home.appendingPathComponent("outside")
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    try Data("keep".utf8).write(to: outside.appendingPathComponent("keep"))
+    try FileManager.default.createSymbolicLink(at: artifact.url.appendingPathComponent("link"), withDestinationURL: outside)
+    let service = InteractiveCleanup(activity: BusyInteractiveActivity(),
+      coordinationDirectory: home.appendingPathComponent("coordination"))
+    let plan = try service.prepare([artifact], allowingActiveOutput: true)
+    try FileManager.default.createDirectory(at: artifact.url.appendingPathComponent(".git"), withIntermediateDirectories: true)
+    XCTAssertTrue(service.execute(plan).reclaimedIDs.isEmpty)
+    try FileManager.default.removeItem(at: artifact.url.appendingPathComponent(".git"))
+    XCTAssertEqual(service.execute(plan).reclaimedIDs, [artifact.id])
+    XCTAssertEqual(try String(contentsOf: outside.appendingPathComponent("keep"), encoding: .utf8), "keep")
+  }
+
+  func testOverrideStillRejectsChangedProjectMarker() throws {
+    let (home, artifact) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let service = InteractiveCleanup(activity: BusyInteractiveActivity(),
+      coordinationDirectory: home.appendingPathComponent("coordination"))
+    let plan = try service.prepare([artifact], allowingActiveOutput: true)
+    try Data("{\"changed\":true}".utf8).write(to: artifact.projectURL.appendingPathComponent("package.json"))
+    XCTAssertFalse(service.execute(plan).failures.isEmpty)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: artifact.path))
+  }
+
   func testReviewExpiringDuringFinalInspectionPreservesOutput() throws {
     let (home, artifact) = try fixture()
     defer { try? FileManager.default.removeItem(at: home) }

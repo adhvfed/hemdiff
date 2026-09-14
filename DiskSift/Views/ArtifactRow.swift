@@ -107,7 +107,7 @@ struct ArtifactRow: View {
                 }
             }
             .buttonStyle(.borderless)
-            .disabled(model.isBusy)
+            .disabled(model.isCleanupBlocked)
             .help("Permanently delete this folder")
             .accessibilityLabel("Delete \(artifact.kind.title) for \(artifact.projectName)")
         }

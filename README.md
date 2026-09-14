@@ -75,7 +75,12 @@ remain in the Mac app.
 Cleanup now captures recursive evidence before confirmation and rechecks it
 before deletion. Active/recently changed output, tracked files, nested version
 control metadata and mount crossings are refused. These checks can conservatively
-exclude dependency caches containing their own repositories.
+exclude dependency caches containing their own repositories. In the app, **Delete
+Anyway…** lets you explicitly override running-process and recent-change checks
+for the reviewed selection. It can disrupt builds or running apps; open files may
+keep disk space occupied until their processes close them. Folder identity,
+project markers, tracked-file protection and filesystem boundaries still apply.
+The CLI/MCP cleanup policy is unchanged.
 
 ## Setup
 
@@ -100,8 +105,9 @@ refreshes independently without a filesystem walk. Individual or selected
 folders can be cleaned through an explicit confirmation; every target is
 revalidated before it is permanently deleted.
 
-Scanning and cleanup are serialized. Cancellation waits for scan subprocesses
-to exit, failed measurements are reported as skipped, and cleanup rejects paths
+Cleanup checks the selected folders even while a scan or Trash refresh is running.
+Confirming deletion stops any active scan and waits for its subprocesses to exit
+before removing files. Failed measurements are reported as skipped, and cleanup rejects paths
 with symbolic links in their ancestry. Allocated sizes are estimates: shared APFS
 blocks and snapshots can make the actual free-space increase smaller.
 
@@ -147,7 +153,9 @@ to select individual projects; explicit choices survive live regrouping.
 See [the research and heuristic rationale](docs/workspace-discovery.md).
 
 
-The menu bar panel offers **Scan Now** and **Clean Build Output…**. Cleanup opens
+The menu bar panel offers **Scan Now** and **Clean Build Output…**, followed by
+the five largest projects by build-output size. Each project has a cleanup action
+that reviews only its build folders. Cleanup opens
 a fixed list of detected build folders for confirmation before deleting anything.
 Use **View → Show Menu Bar Icon** to restore the menu bar item if it is hidden.
 

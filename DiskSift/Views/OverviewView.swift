@@ -97,7 +97,7 @@ struct OverviewView: View {
                     } else {
                     Button("Clean Build Output…") { model.requestQuickCleanup() }
                         .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
-                        .disabled(model.snapshot.artifacts.isEmpty || model.isBusy || model.isReviewingDeletion)
+                        .disabled(model.snapshot.artifacts.isEmpty || model.isCleanupBlocked || model.isReviewingDeletion)
                     }
                     if model.isSnapshotStale && model.snapshot.finishedAt != .distantPast {
                         Label("Scan needed", systemImage: "clock").font(.caption).foregroundStyle(.orange)

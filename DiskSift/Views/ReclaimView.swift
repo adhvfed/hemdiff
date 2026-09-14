@@ -8,6 +8,8 @@ struct ReclaimView: View {
     @State private var pending: [Artifact] = []
     @State private var reviewPlan: InteractiveCleanupPlan?
     @State private var preparationError: String?
+    @State private var preparationAttempt = 0
+    @State private var allowingActiveOutput = false
     @State private var groupByProject = true
     @State private var collapsed = Set<String>()
 
@@ -114,7 +116,7 @@ struct ReclaimView: View {
                 Button("Clear") { model.deselectAll() }.disabled(model.selectedArtifactIDs.isEmpty)
                 Button("Delete Build Output…") { model.requestCleanup(model.selectedArtifacts) }
                     .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
-                    .disabled(model.selectedArtifactIDs.isEmpty || model.isBusy)
+                    .disabled(model.selectedArtifactIDs.isEmpty || model.isCleanupBlocked)
             }.padding(.horizontal, 28).padding(.vertical, 18).background(.bar).overlay(alignment: .top) { Divider() }
             }
         }
@@ -123,6 +125,7 @@ struct ReclaimView: View {
             guard let requested else { return }
             reviewPlan = nil
             preparationError = nil
+            allowingActiveOutput = false
             pending = requested
             model.pendingQuickCleanup = nil
             confirmsReclaim = true
@@ -144,21 +147,41 @@ struct ReclaimView: View {
                 if model.isPreparingCleanup {
                     HStack { ProgressView().controlSize(.small); Text("Checking folders before cleanup…") }
                 }
-                if let preparationError { Text(preparationError).foregroundStyle(.red).textSelection(.enabled) }
-                Text("Stop running builds and dev servers before cleanup. Deletion skips Trash and cannot be undone.").font(.callout).foregroundStyle(.secondary)
+                if let preparationError {
+                    Text(preparationError).foregroundStyle(.red).textSelection(.enabled)
+                    HStack {
+                        Button("Check Again") { preparationAttempt += 1 }
+                        if !allowingActiveOutput {
+                            Button("Delete Anyway…") {
+                                allowingActiveOutput = true
+                                preparationAttempt += 1
+                            }
+                        }
+                    }.disabled(model.isCleanupBlocked)
+                }
+                if allowingActiveOutput {
+                    Text("Deleting active build output may break running builds or apps. Open files may keep disk space occupied until they close.")
+                        .font(.callout).foregroundStyle(.orange)
+                }
+                Text(allowingActiveOutput
+                     ? "Deletion skips Trash and cannot be undone."
+                     : "Stop running builds and dev servers before cleanup. Deletion skips Trash and cannot be undone.")
+                    .font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Spacer()
                     Button("Cancel") { confirmsReclaim = false }.keyboardShortcut(.cancelAction)
-                    Button("Delete Permanently", role: .destructive) {
+                    Button(allowingActiveOutput ? "Delete Anyway" : "Delete Permanently", role: .destructive) {
                         guard let reviewed = reviewPlan else { return }
                         confirmsReclaim = false
                         Task { await model.reclaimReviewed(reviewed) }
-                    }.buttonStyle(HemdiffButtonStyle(emphasis: .destructive)).disabled(model.isBusy || reviewPlan == nil)
+                    }.buttonStyle(HemdiffButtonStyle(emphasis: .destructive)).disabled(model.isCleanupBlocked || reviewPlan == nil)
                 }
             }.padding(24).frame(width: 560).buttonStyle(HemdiffButtonStyle())
-                .task {
+                .task(id: preparationAttempt) {
+                    reviewPlan = nil
+                    preparationError = nil
                     do {
-                        let plan = try await model.prepareCleanup(pending)
+                        let plan = try await model.prepareCleanup(pending, allowingActiveOutput: allowingActiveOutput)
                         try Task.checkCancellation()
                         reviewPlan = plan
                     } catch is CancellationError {} catch {

@@ -48,11 +48,16 @@ final class AppModel: ObservableObject {
     private let fileOperations: FileOperations
     var isBusy: Bool { isUpdatingInventory || isPreparingCleanup || isScanning || isManagingFiles || isLoadingTrash || !reclaimingArtifactIDs.isEmpty }
 
+    // Read-only background work does not prevent reviewing selected folders.
+    var isCleanupBlocked: Bool { isPreparingCleanup || isManagingFiles || !reclaimingArtifactIDs.isEmpty }
+    private var inventoryWaiters: [CheckedContinuation<Void, Never>] = []
+
     private let scanner: ArtifactScanner
     private let volumeMonitor: VolumeMonitor
     private let snapshotStore: SnapshotStore
     private let cleanup: InteractiveCleanup
     @Published private(set) var isPreparingCleanup = false
+    private var cleanupPreparationCount = 0
     private let homeDirectory: URL
     private let defaults: UserDefaults
     private var scanTask: Task<Void, Never>?
@@ -67,6 +72,7 @@ final class AppModel: ObservableObject {
         volumeMonitor: VolumeMonitor = VolumeMonitor(),
         snapshotStore: SnapshotStore = SnapshotStore(),
         reclaimer: ArtifactReclaimer = ArtifactReclaimer(),
+        cleanup: InteractiveCleanup? = nil,
         fileOperations: FileOperations = FileOperations(),
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         defaults: UserDefaults = .standard,
@@ -75,7 +81,7 @@ final class AppModel: ObservableObject {
         self.scanner = scanner
         self.volumeMonitor = volumeMonitor
         self.snapshotStore = snapshotStore
-        self.cleanup = InteractiveCleanup(validator: reclaimer)
+        self.cleanup = cleanup ?? InteractiveCleanup(validator: reclaimer)
         self.fileOperations = fileOperations
         self.homeDirectory = homeDirectory.standardizedFileURL
         self.defaults = defaults
@@ -221,15 +227,15 @@ final class AppModel: ObservableObject {
     }
 
     func requestQuickCleanup() {
-        guard !isBusy, !isReviewingDeletion, !isShowingSetup, !snapshot.artifacts.isEmpty else { return }
+        guard !isCleanupBlocked, !isReviewingDeletion, !isShowingSetup, !snapshot.artifacts.isEmpty else { return }
         isReviewingDeletion = true
         destination = .reclaim
         pendingQuickCleanup = snapshot.artifacts.sorted { $0.allocatedBytes > $1.allocatedBytes }
     }
 
     func requestCleanup(_ artifacts: [Artifact]) {
-        guard !isBusy, !isReviewingDeletion else {
-            errorMessage = "Wait for the scan or cleanup to finish."
+        guard !isCleanupBlocked, !isReviewingDeletion else {
+            errorMessage = "Another file operation is in progress."
             return
         }
         guard !artifacts.isEmpty else { return }
@@ -238,13 +244,21 @@ final class AppModel: ObservableObject {
         pendingQuickCleanup = artifacts
     }
 
-    func prepareCleanup(_ artifacts: [Artifact]) async throws -> InteractiveCleanupPlan {
-        guard !isBusy else { throw AgentServiceError.refused("Wait for the scan or cleanup to finish.") }
+    func prepareCleanup(_ artifacts: [Artifact], allowingActiveOutput: Bool = false) async throws -> InteractiveCleanupPlan {
+        guard !isManagingFiles, reclaimingArtifactIDs.isEmpty else {
+            throw AgentServiceError.refused("Another file operation is in progress.")
+        }
+        // A sheet task can restart before its cancelled worker has exited.
+        // Both checks are read-only; do not make the new review refuse itself.
+        cleanupPreparationCount += 1
         isPreparingCleanup = true
-        defer { isPreparingCleanup = false }
+        defer {
+            cleanupPreparationCount -= 1
+            isPreparingCleanup = cleanupPreparationCount > 0
+        }
         let service = cleanup
         let worker = Task.detached(priority: .utility) {
-            try service.prepare(artifacts, cancelled: { Task.isCancelled })
+            try service.prepare(artifacts, allowingActiveOutput: allowingActiveOutput, cancelled: { Task.isCancelled })
         }
         return try await withTaskCancellationHandler {
             try await worker.value
@@ -252,8 +266,8 @@ final class AppModel: ObservableObject {
     }
 
     func reclaimReviewed(_ plan: InteractiveCleanupPlan) async {
-        guard !isBusy else {
-            errorMessage = "Wait for the scan or cleanup to finish."
+        guard !isCleanupBlocked else {
+            errorMessage = "Another file operation is in progress."
             return
         }
         let artifactIDs = Set(plan.artifacts.map(\.id))
@@ -261,6 +275,14 @@ final class AppModel: ObservableObject {
         defer { reclaimingArtifactIDs.subtract(artifactIDs) }
         errorMessage = nil
         noticeMessage = nil
+        // Reserve cleanup before yielding. Stop discovery so it cannot publish an
+        // inventory captured before deletion, and let existing index writes finish.
+        cancelScan()
+        await scanTask?.value
+        if isUpdatingInventory {
+            await withCheckedContinuation { inventoryWaiters.append($0) }
+        }
+        guard !Task.isCancelled else { return }
         let service = cleanup
         let worker = Task.detached(priority: .utility) {
             service.execute(plan, cancelled: { Task.isCancelled })
@@ -350,7 +372,7 @@ final class AppModel: ObservableObject {
     func upgradeClassification() async {
         guard !isBusy, let path = snapshot.content.indexPath else { return }
         isUpdatingInventory = true
-        defer { isUpdatingInventory = false }
+        defer { finishInventoryUpdate() }
         let coverageErrors = snapshot.content.errorsSkipped
         let pendingRemovals = snapshot.content.removedPaths ?? []
         do {
@@ -372,7 +394,7 @@ final class AppModel: ObservableObject {
     func reconcileKnownRemovals(visiblePaths: [String] = []) async {
         guard !isBusy, !isReviewingDeletion else { return }
         isUpdatingInventory = true
-        defer { isUpdatingInventory = false }
+        defer { finishInventoryUpdate() }
         let paths = Set(snapshot.artifacts.map(\.path) + visiblePaths)
         let missing = await Task.detached(priority: .utility) {
             paths.filter { path in
@@ -386,6 +408,13 @@ final class AppModel: ObservableObject {
         selectedArtifactIDs.subtract(ids)
         await reconcileRemovedPaths(Array(missing))
         refreshVolume()
+    }
+
+    private func finishInventoryUpdate() {
+        isUpdatingInventory = false
+        let waiters = inventoryWaiters
+        inventoryWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
     }
 
     private func reportFileFailures(_ result: FileOperationResult) {

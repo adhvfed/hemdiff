@@ -38,6 +38,11 @@ struct ArtifactStamp: Codable, Equatable, Sendable {
   let nodes: [String: NodeStamp]
   let markers: [String: NodeStamp]
   let markerDigests: [String: String]
+  func matchesLocation(_ other: ArtifactStamp) -> Bool {
+    guard let root = nodes[""], let otherRoot = other.nodes[""] else { return false }
+    return project.sameIdentity(other.project) && root.sameIdentity(otherRoot)
+      && markers == other.markers && markerDigests == other.markerDigests
+  }
   func matches(_ other: ArtifactStamp) -> Bool {
     project.sameIdentity(other.project) && nodes == other.nodes && markers == other.markers
       && markerDigests == other.markerDigests
@@ -97,7 +102,7 @@ struct ArtifactFilesystem {
     return canonical
   }
   static func snapshot(
-    _ artifact: Artifact, quietInterval: TimeInterval, now: Date, cancelled: () -> Bool, validatedKnownContainer: Bool = false
+    _ artifact: Artifact, quietInterval: TimeInterval, now: Date, cancelled: () -> Bool, validatedKnownContainer: Bool = false, allowingContentChanges: Bool = false
   ) throws -> ArtifactStamp {
     let project = try DirectoryDescriptor(path: artifact.projectPath)
     let root = try DirectoryDescriptor(path: artifact.path)
@@ -110,7 +115,7 @@ struct ArtifactFilesystem {
       if cancelled() { throw CancellationError() }
       guard stamp.directory || stamp.regular || stamp.symbolicLink, stamp.mountID == rootStat.mountID
       else { throw AgentServiceError.refused("Mounts and special files cannot be cleaned") }
-      guard now.timeIntervalSince(stamp.modified) >= quietInterval else {
+      guard allowingContentChanges || now.timeIntervalSince(stamp.modified) >= quietInterval else {
         throw AgentServiceError.refused("Build output changed recently; wait for it to become idle")
       }
       nodes[relative] = stamp
@@ -126,19 +131,21 @@ struct ArtifactFilesystem {
         else { throw AgentServiceError.refused("Mounts and special files cannot be cleaned") }
         if child.directory {
           let descriptor = try DirectoryDescriptor(parent: dir, name: name)
-          guard try descriptor.stat() == child else {
+          let opened = try descriptor.stat()
+          guard allowingContentChanges ? opened.sameIdentity(child) : opened == child else {
             throw AgentServiceError.refused("Directory changed during inspection")
           }
           try walk(descriptor, path, child)
         } else {
-          guard now.timeIntervalSince(child.modified) >= quietInterval else {
+          guard allowingContentChanges || now.timeIntervalSince(child.modified) >= quietInterval else {
             throw AgentServiceError.refused(
               "Build output changed recently; wait for it to become idle")
           }
           nodes[path] = child
         }
       }
-      guard try dir.stat() == stamp else {
+      let current = try dir.stat()
+      guard allowingContentChanges ? current.sameIdentity(stamp) : current == stamp else {
         throw AgentServiceError.refused("Directory changed during inspection")
       }
     }
@@ -178,6 +185,53 @@ struct ArtifactFilesystem {
     return ArtifactStamp(
       project: try project.stat(), nodes: nodes, markers: markers, markerDigests: digests)
   }
+  /// Explicit interactive override: permit changing contents, but never follow links,
+  /// cross mounts, remove nested version control, or accept a replaced root.
+  static func removeActive(_ artifact: Artifact, stamp: ArtifactStamp, cancelled: () -> Bool) throws -> Int64 {
+    let parent = try DirectoryDescriptor(path: artifact.url.deletingLastPathComponent().path)
+    let name = artifact.url.lastPathComponent
+    let root = try DirectoryDescriptor(parent: parent, name: name)
+    guard let expected = stamp.nodes[""], try root.stat().sameIdentity(expected) else {
+      throw AgentServiceError.refused("Artifact replaced before deletion")
+    }
+    var removed: Int64 = 0
+    func walk(_ directory: DirectoryDescriptor) throws {
+      if cancelled() { throw CancellationError() }
+      for name in try directory.names() {
+        if cancelled() { throw CancellationError() }
+        guard ![".git", ".hg", ".svn"].contains(name) else {
+          throw AgentServiceError.refused("Nested version-control data cannot be cleaned")
+        }
+        let entry = try directory.stat(name)
+        guard entry.mountID == expected.mountID,
+          entry.directory || entry.regular || entry.symbolicLink
+        else { throw AgentServiceError.refused("Mounts and special files cannot be cleaned") }
+        if entry.directory {
+          let child = try DirectoryDescriptor(parent: directory, name: name)
+          guard try child.stat().sameIdentity(entry) else {
+            throw AgentServiceError.refused("Directory replaced during deletion")
+          }
+          try walk(child)
+        }
+        guard try directory.stat(name).sameIdentity(entry) else {
+          throw AgentServiceError.refused("Entry replaced during deletion")
+        }
+        guard name.withCString({ hmd_unlink(directory.fd, $0, entry.directory ? 1 : 0) }) == 0 else {
+          throw AgentServiceError.refused("Could not remove entry: \(name). A running build may be recreating files.")
+        }
+        removed += Int64(clamping: entry.blocks) * 512
+      }
+    }
+    try walk(root)
+    guard try parent.stat(name).sameIdentity(expected), try root.names().isEmpty else {
+      throw AgentServiceError.refused("Build output changed during deletion. A running build may be recreating files.")
+    }
+    guard name.withCString({ hmd_unlink(parent.fd, $0, 1) }) == 0 else {
+      throw AgentServiceError.refused("Could not remove artifact directory")
+    }
+    return removed + Int64(clamping: expected.blocks) * 512
+  }
+
   /// Rechecks every entry before unlinking it through its open parent descriptor.
   /// New/changed entries are preserved. Arbitrary hostile same-user rename races remain outside the guarantee.
   static func remove(_ artifact: Artifact, stamp: ArtifactStamp, cancelled: () -> Bool) throws

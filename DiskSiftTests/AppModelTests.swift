@@ -23,7 +23,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.isSnapshotStale)
     }
 
-    func testReclaimCannotDeleteDuringScan() async throws {
+    func testCleanupValidatesDuringScanAndCancelsScanBeforeDeleting() async throws {
         let fixture = try ModelFixture()
         defer { fixture.remove() }
         let target = fixture.url.appendingPathComponent("project/target")
@@ -34,13 +34,30 @@ final class AppModelTests: XCTestCase {
             projectPath: target.deletingLastPathComponent().path, allocatedBytes: 0,
             createdAt: nil, modifiedAt: nil, fileIdentity: try ArtifactFileIdentity.capture(at: target))]
         try fixture.store.save(snapshot)
-        let model = fixture.model()
+        let model = fixture.model(locator: ProjectLocator(indexedPaths: { _ in
+            // Keep discovery active until cleanup cancels it.
+            while !Task.isCancelled { Thread.sleep(forTimeInterval: 0.01) }
+            throw CancellationError()
+        }))
+        defer { model.cancelScan() }
         model.startScan()
-        model.requestCleanup([snapshot.artifacts[0]])
+        model.requestCleanup(snapshot.artifacts)
+        XCTAssertEqual(model.pendingQuickCleanup, snapshot.artifacts)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isCleanupBlocked)
+        async let firstReview = model.prepareCleanup(snapshot.artifacts)
+        async let restartedReview = model.prepareCleanup(snapshot.artifacts)
+        let (plan, _) = try await (firstReview, restartedReview)
+        XCTAssertTrue(model.isScanning, "Validation must not wait for discovery")
         XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
-        XCTAssertNotNil(model.errorMessage)
-        model.cancelScan()
-        try await waitForScan(model)
+        XCTAssertFalse(model.isCleanupBlocked)
+        await model.reclaimReviewed(plan)
+        XCTAssertFalse(model.isScanning)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
+        XCTAssertTrue(model.snapshot.artifacts.isEmpty)
+        XCTAssertTrue(try XCTUnwrap(fixture.store.load()).artifacts.isEmpty)
+        XCTAssertEqual(model.snapshot.finishedAt, .distantPast, "Cancelled scan must not overwrite cleanup")
+        XCTAssertNil(model.errorMessage)
     }
 
     func testQuickCleanupOpensFixedReviewWithoutDeletingAndBlocksScan() throws {
@@ -124,9 +141,10 @@ private final class ModelFixture {
         store = SnapshotStore(fileURL: url.appendingPathComponent("snapshot.json"))
     }
 
-    func model() -> AppModel {
-        AppModel(scanner: ArtifactScanner(locator: ProjectLocator(indexedPaths: { _ in [] })),
-                 snapshotStore: store, homeDirectory: url, defaults: defaults, startsAutomatically: false)
+    func model(locator: ProjectLocator = ProjectLocator(indexedPaths: { _ in [] })) -> AppModel {
+        AppModel(scanner: ArtifactScanner(locator: locator),
+                 snapshotStore: store, cleanup: InteractiveCleanup(quietInterval: 0),
+                 homeDirectory: url, defaults: defaults, startsAutomatically: false)
     }
 
     func remove() {

@@ -5,6 +5,23 @@ struct MenuBarPanel: View {
     var openMainWindow: (() -> Void)?
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var model: AppModel
+    private struct ProjectOutput {
+        let path: String
+        let artifacts: [Artifact]
+        let bytes: Int64
+    }
+
+    private var largestProjects: [ProjectOutput] {
+        let grouped = Dictionary(grouping: model.snapshot.artifacts, by: \.projectPath)
+        var projects: [ProjectOutput] = []
+        for (path, artifacts) in grouped {
+            let bytes = artifacts.reduce(Int64(0)) { $0 + $1.allocatedBytes }
+            projects.append(ProjectOutput(path: path, artifacts: artifacts, bytes: bytes))
+        }
+        projects.sort { $0.bytes == $1.bytes ? $0.path < $1.path : $0.bytes > $1.bytes }
+        return Array(projects.prefix(5))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
@@ -33,7 +50,39 @@ struct MenuBarPanel: View {
                     Label("Clean Build Output…", systemImage: "shippingbox")
                         .frame(maxWidth: .infinity)
                 }.buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
-                    .disabled(model.snapshot.artifacts.isEmpty || model.isBusy || model.isReviewingDeletion)
+                    .disabled(model.snapshot.artifacts.isEmpty || model.isCleanupBlocked || model.isReviewingDeletion)
+                if !largestProjects.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Largest projects").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        ForEach(largestProjects, id: \.path) { project in
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(URL(fileURLWithPath: project.path).lastPathComponent)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .lineLimit(1).truncationMode(.middle)
+                                    Text(project.path.abbreviatingHome)
+                                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                                        .lineLimit(1).truncationMode(.middle)
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                                    .help(project.path.abbreviatingHome)
+                                Text(ByteText.compact(project.bytes))
+                                    .font(.system(size: 12, weight: .semibold)).monospacedDigit()
+                                    .fixedSize()
+                                Button {
+                                    model.requestCleanup(project.artifacts)
+                                    showMainWindow()
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .frame(width: 28, height: 30)
+                                        .contentShape(Rectangle())
+                                }.buttonStyle(.borderless).foregroundStyle(DiskSiftTheme.node)
+                                    .help("Clean build output for \(project.path.abbreviatingHome)…")
+                                    .accessibilityLabel("Clean build output for \(project.path.abbreviatingHome)")
+                                    .disabled(model.isCleanupBlocked || model.isReviewingDeletion)
+                            }
+                        }
+                    }
+                }
             }
             Divider()
             HStack {
