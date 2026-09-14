@@ -113,6 +113,10 @@ public struct Artifact: Identifiable, Codable, Hashable, Sendable {
     public let kind: ArtifactKind
     public let path: String
     public let projectPath: String
+    /// Git checkout root when the artifact belongs to a repository.
+    public let repositoryRootPath: String?
+    /// Git common directory identifies the repository across linked worktrees.
+    public let repositoryCommonPath: String?
     public let allocatedBytes: Int64
     public let createdAt: Date?
     public let modifiedAt: Date?
@@ -123,6 +127,8 @@ public struct Artifact: Identifiable, Codable, Hashable, Sendable {
         kind: ArtifactKind,
         path: String,
         projectPath: String,
+        repositoryRootPath: String? = nil,
+        repositoryCommonPath: String? = nil,
         allocatedBytes: Int64,
         createdAt: Date?,
         modifiedAt: Date?,
@@ -132,6 +138,8 @@ public struct Artifact: Identifiable, Codable, Hashable, Sendable {
         self.kind = kind
         self.path = path
         self.projectPath = projectPath
+        self.repositoryRootPath = repositoryRootPath
+        self.repositoryCommonPath = repositoryCommonPath
         self.allocatedBytes = allocatedBytes
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
@@ -166,4 +174,3 @@ public struct ReclaimResult: Sendable {
         self.failures = failures
     }
 }
-

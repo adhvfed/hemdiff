@@ -12,10 +12,13 @@ struct MenuBarPanel: View {
     }
 
     private var largestProjects: [ProjectOutput] {
-        let grouped = Dictionary(grouping: model.snapshot.artifacts, by: \.projectPath)
+        let grouped = Dictionary(grouping: model.snapshot.artifacts, by: { $0.repositoryCommonPath ?? $0.projectPath })
         var projects: [ProjectOutput] = []
-        for (path, artifacts) in grouped {
+        for (key, artifacts) in grouped {
             let bytes = artifacts.reduce(Int64(0)) { $0 + $1.allocatedBytes }
+            let path = artifacts.compactMap(\.repositoryRootPath).sorted().first
+                ?? artifacts.map(\.projectPath).sorted().first
+                ?? key
             projects.append(ProjectOutput(path: path, artifacts: artifacts, bytes: bytes))
         }
         projects.sort { $0.bytes == $1.bytes ? $0.path < $1.path : $0.bytes > $1.bytes }

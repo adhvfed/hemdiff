@@ -49,6 +49,19 @@ struct GitRepository: Sendable {
         return nil
     }
 
+    static func enclosing(_ project: URL) -> GitRepository? {
+        var candidate = project.standardizedFileURL
+        while candidate.path != "/" {
+            if let repository = at(candidate) { return repository }
+            // A submodule or invalid pointer is a repository boundary.
+            if FileManager.default.fileExists(atPath: candidate.appendingPathComponent(".git").path) {
+                return nil
+            }
+            candidate = candidate.deletingLastPathComponent()
+        }
+        return at(URL(fileURLWithPath: "/"))
+    }
+
     func registeredWorktrees() throws -> [URL] {
         let registry = commonDirectory.appendingPathComponent("worktrees")
         var result: [URL] = []

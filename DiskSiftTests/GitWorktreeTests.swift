@@ -49,6 +49,8 @@ final class GitWorktreeTests: XCTestCase {
         let snapshot = try await ArtifactScanner(locator: locator).scan(configuration: fixture.configuration)
         XCTAssertEqual(Set(snapshot.artifacts.map(\.projectPath)), Set([fixture.main.path, first.path, second.path]))
         XCTAssertEqual(snapshot.artifacts.count, 3)
+        XCTAssertEqual(Set(snapshot.artifacts.compactMap(\.repositoryCommonPath)).count, 1)
+        XCTAssertEqual(Set(snapshot.artifacts.compactMap(\.repositoryRootPath)), Set([fixture.main.path, first.path, second.path]))
         XCTAssertEqual(snapshot.categories.reduce(0) { $0 + $1.allocatedBytes }, snapshot.artifactBytes)
     }
 

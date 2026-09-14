@@ -72,10 +72,29 @@ public struct InteractiveCleanup: Sendable {
         throw AgentServiceError.refused("Select parent or nested build folders, not both")
       }
     }
+    if allowingActiveOutput {
+      // The app already has an explicit destructive confirmation. Do not make
+      // that confirmation wait for a recursive walk of a potentially enormous
+      // dependency tree; the full inspection runs after Delete is pressed.
+      var snapshots: [String: ArtifactStamp] = [:]
+      for artifact in artifacts {
+        if cancelled() { throw CancellationError() }
+        try validator.validate(artifact)
+        snapshots[artifact.id] = try ArtifactFilesystem.snapshot(
+          artifact, quietInterval: 0, now: Date(), cancelled: cancelled,
+          validatedKnownContainer: artifact.kind.isKnownContainerArtifact,
+          allowingContentChanges: true, rootOnly: true)
+      }
+      return .init(
+        artifacts: artifacts, expiresAt: Date().addingTimeInterval(lifetime),
+        estimatedBytes: artifacts.reduce(0) { $0 + max(0, $1.allocatedBytes) },
+        allowsActiveOutput: true, snapshots: snapshots, serviceID: serviceID)
+    }
+
     var snapshots: [String: ArtifactStamp] = [:]
     var owners: [String: String] = [:]
     for artifact in artifacts {
-      let stamp = try inspect(artifact, allowingActiveOutput: allowingActiveOutput, cancelled: cancelled)
+      let stamp = try inspect(artifact, allowingActiveOutput: false, cancelled: cancelled)
       for node in stamp.nodes.values where node.regular && node.links > 1 {
         let key = "\(node.device):\(node.inode)"
         if let owner = owners[key], owner != artifact.id {
@@ -105,6 +124,32 @@ public struct InteractiveCleanup: Sendable {
         guard plan.serviceID == serviceID, Date() < plan.expiresAt else {
           throw AgentServiceError.refused("Cleanup review expired. Review the folders again.")
         }
+        if plan.allowsActiveOutput {
+          // Fast interactive plans are validated independently. One unavailable
+          // artifact must not prevent reclaiming the other selected artifacts.
+          for artifact in plan.artifacts {
+            guard Date() < plan.expiresAt else {
+              failures[artifact.id] = "Cleanup review expired. Review the folders again."
+              continue
+            }
+            do {
+              let current = try inspect(
+                artifact, allowingActiveOutput: true, cancelled: cancelled)
+              guard let reviewed = plan.snapshots[artifact.id],
+                reviewed.matchesLocation(current) else {
+                throw AgentServiceError.refused(
+                  "Build output location or project marker changed after review.")
+              }
+              bytes += try ArtifactFilesystem.removeActive(
+                artifact, stamp: current, cancelled: cancelled)
+              removed.insert(artifact.id)
+            } catch {
+              failures[artifact.id] = error.localizedDescription
+            }
+          }
+          return
+        }
+
         func inspectReviewed(_ artifact: Artifact) throws -> ArtifactStamp {
           let current = try inspect(
             artifact, allowingActiveOutput: plan.allowsActiveOutput, cancelled: cancelled)

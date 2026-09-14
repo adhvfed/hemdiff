@@ -102,7 +102,7 @@ struct ArtifactFilesystem {
     return canonical
   }
   static func snapshot(
-    _ artifact: Artifact, quietInterval: TimeInterval, now: Date, cancelled: () -> Bool, validatedKnownContainer: Bool = false, allowingContentChanges: Bool = false
+    _ artifact: Artifact, quietInterval: TimeInterval, now: Date, cancelled: () -> Bool, validatedKnownContainer: Bool = false, allowingContentChanges: Bool = false, rootOnly: Bool = false
   ) throws -> ArtifactStamp {
     let project = try DirectoryDescriptor(path: artifact.projectPath)
     let root = try DirectoryDescriptor(path: artifact.path)
@@ -149,7 +149,11 @@ struct ArtifactFilesystem {
         throw AgentServiceError.refused("Directory changed during inspection")
       }
     }
-    try walk(root, "", rootStat)
+    if rootOnly {
+      nodes[""] = rootStat
+    } else {
+      try walk(root, "", rootStat)
+    }
     var markers = [String: NodeStamp]()
     var digests = [String: String]()
     for name in artifact.kind.markerNames {

@@ -127,6 +127,7 @@ struct ArtifactScanner: Sendable {
                 directoriesVisited += measured.directories
                 errorsSkipped += measured.errors
                 bytesMeasured += measured.bytes
+                let repository = GitRepository.enclosing(marker.projectURL)
 
                 let category = categoryIdentity(
                     for: marker.projectURL,
@@ -139,6 +140,8 @@ struct ArtifactScanner: Sendable {
                         kind: marker.kind,
                         path: artifactURL.path,
                         projectPath: marker.projectURL.path,
+                        repositoryRootPath: repository?.root.path,
+                        repositoryCommonPath: repository?.commonDirectory.path,
                         allocatedBytes: measured.bytes,
                         createdAt: values.creationDate,
                         modifiedAt: values.contentModificationDate,

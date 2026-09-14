@@ -9,7 +9,6 @@ struct ReclaimView: View {
     @State private var reviewPlan: InteractiveCleanupPlan?
     @State private var preparationError: String?
     @State private var preparationAttempt = 0
-    @State private var allowingActiveOutput = false
     @State private var groupByProject = true
     @State private var collapsed = Set<String>()
 
@@ -20,9 +19,19 @@ struct ReclaimView: View {
         }.sorted { $0.allocatedBytes > $1.allocatedBytes }
     }
     private var groups: [(name: String, artifacts: [Artifact], bytes: Int64)] {
-        Dictionary(grouping: visible, by: { groupByProject ? $0.projectPath : $0.kind.title })
+        Dictionary(grouping: visible, by: { groupByProject ? projectGroupKey($0) : $0.kind.title })
             .map { key, items in (name: key, artifacts: items, bytes: items.reduce(0) { $0 + $1.allocatedBytes }) }
             .sorted { $0.bytes > $1.bytes }
+    }
+
+    private func projectGroupKey(_ artifact: Artifact) -> String {
+        artifact.repositoryCommonPath ?? artifact.projectPath
+    }
+
+    private func projectGroupRoot(_ artifacts: [Artifact]) -> String {
+        artifacts.compactMap(\.repositoryRootPath).sorted().first
+            ?? artifacts.map(\.projectPath).sorted().first
+            ?? "Project"
     }
 
     var body: some View {
@@ -81,8 +90,8 @@ struct ReclaimView: View {
                                     Image(systemName: Set(group.artifacts.map(\.id)).isSubset(of: model.selectedArtifactIDs) ? "checkmark.square.fill" : "square")
                                 }.buttonStyle(.plain).foregroundStyle(DiskSiftTheme.node).accessibilityLabel("Check group \(group.name)")
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(groupByProject ? URL(fileURLWithPath: group.name).lastPathComponent : group.name).font(.headline)
-                                    if groupByProject { Text(group.name.abbreviatingHome).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+                                    Text(groupByProject ? URL(fileURLWithPath: projectGroupRoot(group.artifacts)).lastPathComponent : group.name).font(.headline)
+                                    if groupByProject { Text(projectGroupRoot(group.artifacts).abbreviatingHome).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
                                 }
                                 Spacer()
                                 Text(ByteText.string(group.bytes)).font(.title3.weight(.semibold)).monospacedDigit()
@@ -125,7 +134,6 @@ struct ReclaimView: View {
             guard let requested else { return }
             reviewPlan = nil
             preparationError = nil
-            allowingActiveOutput = false
             pending = requested
             model.pendingQuickCleanup = nil
             confirmsReclaim = true
@@ -149,28 +157,15 @@ struct ReclaimView: View {
                 }
                 if let preparationError {
                     Text(preparationError).foregroundStyle(.red).textSelection(.enabled)
-                    HStack {
-                        Button("Check Again") { preparationAttempt += 1 }
-                        if !allowingActiveOutput {
-                            Button("Delete Anyway…") {
-                                allowingActiveOutput = true
-                                preparationAttempt += 1
-                            }
-                        }
-                    }.disabled(model.isCleanupBlocked)
+                    Button("Check Again") { preparationAttempt += 1 }
+                        .disabled(model.isCleanupBlocked)
                 }
-                if allowingActiveOutput {
-                    Text("Deleting active build output may break running builds or apps. Open files may keep disk space occupied until they close.")
-                        .font(.callout).foregroundStyle(.orange)
-                }
-                Text(allowingActiveOutput
-                     ? "Deletion skips Trash and cannot be undone."
-                     : "Stop running builds and dev servers before cleanup. Deletion skips Trash and cannot be undone.")
+                Text("Stop running builds and dev servers before cleanup. Deletion skips Trash and cannot be undone.")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Spacer()
                     Button("Cancel") { confirmsReclaim = false }.keyboardShortcut(.cancelAction)
-                    Button(allowingActiveOutput ? "Delete Anyway" : "Delete Permanently", role: .destructive) {
+                    Button("Delete Permanently", role: .destructive) {
                         guard let reviewed = reviewPlan else { return }
                         confirmsReclaim = false
                         Task { await model.reclaimReviewed(reviewed) }
@@ -181,7 +176,7 @@ struct ReclaimView: View {
                     reviewPlan = nil
                     preparationError = nil
                     do {
-                        let plan = try await model.prepareCleanup(pending, allowingActiveOutput: allowingActiveOutput)
+                        let plan = try await model.prepareCleanup(pending, allowingActiveOutput: true)
                         try Task.checkCancellation()
                         reviewPlan = plan
                     } catch is CancellationError {} catch {

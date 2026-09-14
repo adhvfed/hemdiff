@@ -72,14 +72,13 @@ See [agent setup and authorization](docs/agent-access.md) for commands, MCP/SSH
 examples, build instructions and current limitations. Ordinary files and Trash
 remain in the Mac app.
 
-Cleanup now captures recursive evidence before confirmation and rechecks it
-before deletion. Active/recently changed output, tracked files, nested version
-control metadata and mount crossings are refused. These checks can conservatively
-exclude dependency caches containing their own repositories. In the app, **Delete
-Anyway…** lets you explicitly override running-process and recent-change checks
-for the reviewed selection. It can disrupt builds or running apps; open files may
-keep disk space occupied until their processes close them. Folder identity,
-project markers, tracked-file protection and filesystem boundaries still apply.
+Cleanup confirms the selected folders immediately using the existing inventory
+estimate, then performs recursive evidence checks during deletion. The app is
+optimized for reclaiming developer space quickly: running or recently changed
+output may be removed after confirmation. Folder identity, project markers,
+tracked-file protection, nested version-control protection and filesystem
+boundaries still apply. Open files may keep disk space occupied until their
+processes close them.
 The CLI/MCP cleanup policy is unchanged.
 
 ## Setup
