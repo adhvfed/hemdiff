@@ -11,6 +11,15 @@ final class GitWorktreeTests: XCTestCase {
         XCTAssertEqual(main.commonDirectory.path, physical.commonDirectory.path)
     }
 
+    func testPreferredProjectRootDeprioritizesWorktreePaths() {
+        XCTAssertEqual(
+            GitRepository.preferredRootPath([
+                "/Users/example/worktrees/myproject/feature-x",
+                "/Users/example/Projects/myproject"
+            ]),
+            "/Users/example/Projects/myproject")
+    }
+
     func testRepositorySeedWithoutLinkedWorktreesFindsUnindexedArtifacts() async throws {
         let fixture = try GitFixture()
         defer { fixture.remove() }

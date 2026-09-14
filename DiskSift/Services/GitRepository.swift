@@ -62,6 +62,21 @@ struct GitRepository: Sendable {
         return at(URL(fileURLWithPath: "/"))
     }
 
+    /// Prefer a normal checkout when choosing a display name for a repository.
+    /// Worktree directories are often generated paths such as `.t3/worktrees/...`.
+    static func preferredRootPath(_ paths: [String]) -> String? {
+        paths.sorted {
+            let leftIsWorktree = $0.split(separator: "/").contains {
+                $0.localizedCaseInsensitiveContains("worktree")
+            }
+            let rightIsWorktree = $1.split(separator: "/").contains {
+                $0.localizedCaseInsensitiveContains("worktree")
+            }
+            if leftIsWorktree != rightIsWorktree { return !leftIsWorktree }
+            return $0 < $1
+        }.first
+    }
+
     func registeredWorktrees() throws -> [URL] {
         let registry = commonDirectory.appendingPathComponent("worktrees")
         var result: [URL] = []

@@ -16,7 +16,7 @@ struct MenuBarPanel: View {
         var projects: [ProjectOutput] = []
         for (key, artifacts) in grouped {
             let bytes = artifacts.reduce(Int64(0)) { $0 + $1.allocatedBytes }
-            let path = artifacts.compactMap(\.repositoryRootPath).sorted().first
+            let path = GitRepository.preferredRootPath(artifacts.compactMap(\.repositoryRootPath))
                 ?? artifacts.map(\.projectPath).sorted().first
                 ?? key
             projects.append(ProjectOutput(path: path, artifacts: artifacts, bytes: bytes))

@@ -29,7 +29,7 @@ struct ReclaimView: View {
     }
 
     private func projectGroupRoot(_ artifacts: [Artifact]) -> String {
-        artifacts.compactMap(\.repositoryRootPath).sorted().first
+        GitRepository.preferredRootPath(artifacts.compactMap(\.repositoryRootPath))
             ?? artifacts.map(\.projectPath).sorted().first
             ?? "Project"
     }
