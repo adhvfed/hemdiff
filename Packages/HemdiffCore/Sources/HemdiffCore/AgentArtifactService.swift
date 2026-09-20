@@ -98,8 +98,11 @@ public final class AgentArtifactService {
     var errors: [String] = []
     var visited = 0
     let pruned = Self.prunedDirectories
-    func visit(_ url: URL, root: AgentRoot, mountID: UInt64) throws {
+    func visit(_ url: URL, root: AgentRoot, mountID: UInt64, depth: Int) throws {
       if cancelled() { throw CancellationError() }
+      guard depth <= ArtifactFilesystem.maximumDepth else {
+        throw AgentServiceError.refused("Directory nested too deeply to scan: \(url.path)")
+      }
       let directory = try DirectoryDescriptor(path: url.path)
       guard try directory.stat().mountID == mountID else {
         throw AgentServiceError.refused("Mount boundary skipped: \(url.path)")
@@ -123,7 +126,7 @@ public final class AgentArtifactService {
             modifiedAt: nil, fileIdentity: identity)
           let stamp = try ArtifactFilesystem.snapshot(
             artifact, quietInterval: 0, now: Date(), cancelled: cancelled)
-          let bytes = stamp.nodes.values.reduce(Int64(0)) { $0 + Int64(clamping: $1.blocks) * 512 }
+          let bytes = stamp.nodes.values.reduce(Int64(0)) { $0.addingClamped($1.allocatedBytes) }
           let measured = Artifact(
             kind: kind, path: output.path, projectPath: url.path, allocatedBytes: bytes,
             createdAt: nil, modifiedAt: stamp.nodes[""]?.modified, fileIdentity: identity)
@@ -143,7 +146,8 @@ public final class AgentArtifactService {
         if child.directory {
           do {
             try visit(
-              url.appendingPathComponent(name, isDirectory: true), root: root, mountID: mountID)
+              url.appendingPathComponent(name, isDirectory: true), root: root, mountID: mountID,
+              depth: depth + 1)
           } catch is CancellationError { throw CancellationError() } catch {
             errors.append(error.localizedDescription)
           }
@@ -158,7 +162,8 @@ public final class AgentArtifactService {
           throw AgentServiceError.refused("Configured root changed; reconfigure it before scanning")
         }
         let descriptor = try DirectoryDescriptor(path: root.path)
-        try visit(URL(fileURLWithPath: root.path), root: root, mountID: descriptor.stat().mountID)
+        try visit(
+          URL(fileURLWithPath: root.path), root: root, mountID: descriptor.stat().mountID, depth: 0)
       } catch is CancellationError {
         wasCancelled = true
         break
@@ -370,7 +375,7 @@ public final class AgentArtifactService {
       artifact, quietInterval: 0, now: Date(), cancelled: cancelled)
     let measured = Artifact(
       kind: kind, path: output.path, projectPath: project.path,
-      allocatedBytes: stamp.nodes.values.reduce(0) { $0 + Int64(clamping: $1.blocks) * 512 },
+      allocatedBytes: stamp.nodes.values.reduce(Int64(0)) { $0.addingClamped($1.allocatedBytes) },
       createdAt: nil, modifiedAt: stamp.nodes[""]?.modified, fileIdentity: identity)
     return ArtifactCandidate(
       id: measured.id, rootID: root.id, artifact: measured,

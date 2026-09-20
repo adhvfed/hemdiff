@@ -327,6 +327,14 @@ int hmd_run(const char *const *argv, char **output, size_t *length,
     size_t envCount = 0;
     while (environ[envCount]) envCount++;
     char **environment = calloc(envCount + 1, sizeof(char *));
+    if (!environment) {
+        posix_spawnattr_destroy(&attributes);
+        posix_spawn_file_actions_destroy(&actions);
+        close(descriptors[0]);
+        close(descriptors[1]);
+        errno = ENOMEM;
+        return -1;
+    }
     size_t kept = 0;
     for (size_t i = 0; i < envCount; i++) {
         if (!strncmp(environ[i], "GIT_", 4) || !strncmp(environ[i], "LD_", 3) ||
@@ -372,7 +380,8 @@ int hmd_run(const char *const *argv, char **output, size_t *length,
         }
     }
     close(descriptors[0]);
-    if (failed) kill(-pid, SIGKILL);
+    // Signal only while the pid is still ours; a reaped pid can already name another group.
+    if (failed && !reaped) kill(-pid, SIGKILL);
     if (!reaped) while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
     if (failed) { free(bytes); errno = ETIMEDOUT; return -1; }
     bytes[used] = 0;

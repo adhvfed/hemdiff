@@ -11,6 +11,7 @@ struct DiskSiftApp: App {
             RootView()
                 .environmentObject(model)
                 .background(MenuBarInstaller(controller: menuBar, model: model))
+                .background(MainWindowTracker())
                 .frame(minWidth: 780, minHeight: 560)
         }
         .defaultSize(width: 1040, height: 720)

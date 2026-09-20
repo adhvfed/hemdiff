@@ -62,7 +62,7 @@ struct FilesView: View {
                                           preview: { preview = $0 }, compact: geometry.size.width <= 1050, protection: review.protection,
                                           checkProtection: { item in Task { await review.checkProtection(item) } })
                                 .overlay {
-                                    if review.isLoading { ProgressView().padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10)) }
+                                    if review.isLoading || review.isVerifyingProtection { ProgressView().padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10)) }
                                     else if !checkedOnly && review.items.isEmpty { ContentUnavailableView.search(text: review.search) }
                                 }
                             HStack(spacing: 10) {
@@ -177,7 +177,7 @@ struct FilesView: View {
                 Button("Clear") { review.clear() }.help("Uncheck all files")
             }
             Menu {
-                Button("Check This Page") { review.checkPage() }.disabled(checkedOnly)
+                Button("Check This Page") { review.checkPage() }.disabled(checkedOnly || review.isVerifyingProtection)
                 Button("Clear Checked") { review.clear() }
                 Toggle("Show Checked Only", isOn: $checkedOnly)
                 Button("Preview Focused File") {

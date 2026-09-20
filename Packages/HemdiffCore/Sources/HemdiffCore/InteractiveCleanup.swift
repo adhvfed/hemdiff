@@ -106,7 +106,7 @@ public struct InteractiveCleanup: Sendable {
       snapshots[artifact.id] = stamp
     }
     let bytes = snapshots.values.reduce(Int64(0)) { total, snapshot in
-      snapshot.nodes.values.reduce(total) { $0 + Int64(clamping: $1.blocks) * 512 }
+      snapshot.nodes.values.reduce(total) { $0.addingClamped($1.allocatedBytes) }
     }
     return .init(
       artifacts: artifacts, expiresAt: Date().addingTimeInterval(lifetime),

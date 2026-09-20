@@ -29,6 +29,8 @@ struct NodeStamp: Codable, Equatable, Sendable {
         Double(mtimeSeconds) + Double(mtimeNanoseconds) / 1_000_000_000,
         Double(ctimeSeconds) + Double(ctimeNanoseconds) / 1_000_000_000))
   }
+  /// Block counts come from the kernel. A nonsense value saturates instead of trapping.
+  var allocatedBytes: Int64 { Int64(min(blocks, UInt64(Int64.max) / 512)) * 512 }
   func sameIdentity(_ other: NodeStamp) -> Bool {
     device == other.device && mountID == other.mountID && inode == other.inode && mode == other.mode
   }
@@ -93,6 +95,10 @@ final class DirectoryDescriptor {
 }
 
 struct ArtifactFilesystem {
+  /// Every tree walk here recurses once per level. Refuse past this depth, so a
+  /// pathological tree is reported instead of overflowing the stack mid-deletion.
+  static let maximumDepth = 256
+
   static func canonical(_ url: URL) throws -> URL {
     guard !PathSafety.hasSymbolicLink(in: url) else {
       throw AgentServiceError.refused("Symbolic links are not allowed")
@@ -111,8 +117,11 @@ struct ArtifactFilesystem {
       throw AgentServiceError.refused("Artifact crosses a filesystem boundary")
     }
     var nodes = [String: NodeStamp]()
-    func walk(_ dir: DirectoryDescriptor, _ relative: String, _ stamp: NodeStamp) throws {
+    func walk(_ dir: DirectoryDescriptor, _ relative: String, _ stamp: NodeStamp, depth: Int) throws {
       if cancelled() { throw CancellationError() }
+      guard depth <= maximumDepth else {
+        throw AgentServiceError.refused("Build output is nested too deeply to inspect")
+      }
       guard stamp.directory || stamp.regular || stamp.symbolicLink, stamp.mountID == rootStat.mountID
       else { throw AgentServiceError.refused("Mounts and special files cannot be cleaned") }
       guard allowingContentChanges || now.timeIntervalSince(stamp.modified) >= quietInterval else {
@@ -135,7 +144,7 @@ struct ArtifactFilesystem {
           guard allowingContentChanges ? opened.sameIdentity(child) : opened == child else {
             throw AgentServiceError.refused("Directory changed during inspection")
           }
-          try walk(descriptor, path, child)
+          try walk(descriptor, path, child, depth: depth + 1)
         } else {
           guard allowingContentChanges || now.timeIntervalSince(child.modified) >= quietInterval else {
             throw AgentServiceError.refused(
@@ -152,7 +161,7 @@ struct ArtifactFilesystem {
     if rootOnly {
       nodes[""] = rootStat
     } else {
-      try walk(root, "", rootStat)
+      try walk(root, "", rootStat, depth: 0)
     }
     var markers = [String: NodeStamp]()
     var digests = [String: String]()
@@ -199,8 +208,11 @@ struct ArtifactFilesystem {
       throw AgentServiceError.refused("Artifact replaced before deletion")
     }
     var removed: Int64 = 0
-    func walk(_ directory: DirectoryDescriptor) throws {
+    func walk(_ directory: DirectoryDescriptor, depth: Int) throws {
       if cancelled() { throw CancellationError() }
+      guard depth <= maximumDepth else {
+        throw AgentServiceError.refused("Build output is nested too deeply to delete")
+      }
       for name in try directory.names() {
         if cancelled() { throw CancellationError() }
         guard ![".git", ".hg", ".svn"].contains(name) else {
@@ -215,7 +227,7 @@ struct ArtifactFilesystem {
           guard try child.stat().sameIdentity(entry) else {
             throw AgentServiceError.refused("Directory replaced during deletion")
           }
-          try walk(child)
+          try walk(child, depth: depth + 1)
         }
         guard try directory.stat(name).sameIdentity(entry) else {
           throw AgentServiceError.refused("Entry replaced during deletion")
@@ -223,17 +235,17 @@ struct ArtifactFilesystem {
         guard name.withCString({ hmd_unlink(directory.fd, $0, entry.directory ? 1 : 0) }) == 0 else {
           throw AgentServiceError.refused("Could not remove entry: \(name). A running build may be recreating files.")
         }
-        removed += Int64(clamping: entry.blocks) * 512
+        removed = removed.addingClamped(entry.allocatedBytes)
       }
     }
-    try walk(root)
+    try walk(root, depth: 0)
     guard try parent.stat(name).sameIdentity(expected), try root.names().isEmpty else {
       throw AgentServiceError.refused("Build output changed during deletion. A running build may be recreating files.")
     }
     guard name.withCString({ hmd_unlink(parent.fd, $0, 1) }) == 0 else {
       throw AgentServiceError.refused("Could not remove artifact directory")
     }
-    return removed + Int64(clamping: expected.blocks) * 512
+    return removed.addingClamped(expected.allocatedBytes)
   }
 
   /// Rechecks every entry before unlinking it through its open parent descriptor.
@@ -253,8 +265,11 @@ struct ArtifactFilesystem {
     let aliasesByInode = Dictionary(grouping: stamp.nodes.filter { $0.value.regular && $0.value.links > 1 }) {
       "\($0.value.device):\($0.value.inode)"
     }.mapValues { $0.map(\.key) }
-    func walk(_ directory: DirectoryDescriptor, _ relative: String) throws {
+    func walk(_ directory: DirectoryDescriptor, _ relative: String, depth: Int) throws {
       if cancelled() { throw CancellationError() }
+      guard depth <= maximumDepth else {
+        throw AgentServiceError.refused("Build output is nested too deeply to delete")
+      }
       for name in try directory.names() {
         if cancelled() { throw CancellationError() }
         let path = relative.isEmpty ? name : relative + "/" + name
@@ -266,7 +281,7 @@ struct ArtifactFilesystem {
           guard try child.stat() == expected else {
             throw AgentServiceError.refused("Directory replaced: \(path)")
           }
-          try walk(child, path)
+          try walk(child, path, depth: depth + 1)
           guard try directory.stat(name).sameIdentity(expected) else {
             throw AgentServiceError.refused("Directory replaced: \(path)")
           }
@@ -296,16 +311,23 @@ struct ArtifactFilesystem {
           let aliases = aliasesByInode["\(expected.device):\(expected.inode)"] ?? []
           for key in aliases { remainingNodes[key] = after }
         }
-        removed += Int64(clamping: expected.blocks) * 512
+        removed = removed.addingClamped(expected.allocatedBytes)
       }
     }
-    try walk(root, "")
+    try walk(root, "", depth: 0)
     guard try parent.stat(name).sameIdentity(expected), try root.names().isEmpty else {
       throw AgentServiceError.refused("Artifact changed during deletion")
     }
     guard name.withCString({ hmd_unlink(parent.fd, $0, 1) }) == 0 else {
       throw AgentServiceError.refused("Could not remove artifact directory")
     }
-    return removed + Int64(clamping: expected.blocks) * 512
+    return removed.addingClamped(expected.allocatedBytes)
+  }
+}
+
+extension Int64 {
+  func addingClamped(_ other: Int64) -> Int64 {
+    let sum = addingReportingOverflow(other)
+    return sum.overflow ? .max : sum.partialValue
   }
 }

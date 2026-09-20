@@ -108,7 +108,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
         guard let button = statusItem?.button else { return }
         guard popover.contentViewController != nil else {
             NSApp.activate(ignoringOtherApps: true)
-            NSApp.windows.first { $0.title == "Hemdiff" }?.makeKeyAndOrderFront(nil)
+            MainWindow.existing()?.makeKeyAndOrderFront(nil)
             return
         }
         if popover.isShown { popover.performClose(nil) }
@@ -171,14 +171,44 @@ enum MenuBarIcon {
 }
 
 
+/// Reuse the open main window instead of opening another one.
+/// Its title follows the selected destination, so only the window itself identifies it.
 @MainActor
 enum MainWindow {
+    private static let tracked = NSHashTable<NSWindow>.weakObjects()
+
+    static func track(_ window: NSWindow) {
+        tracked.add(window)
+    }
+
+    /// NSApp drops a closed window, so a tracked window listed there is still open.
+    static func existing() -> NSWindow? {
+        existing(among: NSApp.windows)
+    }
+
+    static func existing(among windows: [NSWindow]) -> NSWindow? {
+        windows.first { tracked.contains($0) && $0.canBecomeMain }
+    }
+
     static func show(using openWindow: OpenWindowAction) {
-        if let window = NSApp.windows.first(where: { $0.title == "Hemdiff" && $0.canBecomeMain }) {
+        if let window = existing() {
             window.makeKeyAndOrderFront(nil)
         } else {
             openWindow(id: "main")
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+/// Report the hosting window of the main scene to MainWindow.
+struct MainWindowTracker: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { TrackingView() }
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    private final class TrackingView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { MainWindow.track(window) }
+        }
     }
 }

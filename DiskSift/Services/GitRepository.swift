@@ -63,7 +63,7 @@ struct GitRepository: Sendable {
     }
 
     /// Prefer a normal checkout when choosing a display name for a repository.
-    /// Worktree directories are often generated paths such as `.t3/worktrees/...`.
+    /// Worktree directories are often generated paths such as `worktrees/<branch>`.
     static func preferredRootPath(_ paths: [String]) -> String? {
         paths.sorted {
             let leftIsWorktree = $0.split(separator: "/").contains {

@@ -13,6 +13,9 @@ struct HostCommand {
   ) throws -> (Int32, Data) {
     let strings = arguments.map { strdup($0) }
     defer { strings.forEach { free($0) } }
+    guard !strings.contains(where: { $0 == nil }) else {
+      throw AgentServiceError.refused("Host command could not be prepared")
+    }
     var argv: [UnsafePointer<CChar>?] = strings.map { pointer in
       pointer.map { UnsafePointer<CChar>($0) }
     }

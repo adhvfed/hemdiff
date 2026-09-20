@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0051C86DEBF5F353A85D0EF2 /* MainWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9434D37A01F7129AA50A2EB7 /* MainWindowTests.swift */; };
 		0A4D0DD31B0083515A09C5A7 /* ProjectLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649880903AC932A26F73CF32 /* ProjectLocator.swift */; };
 		0E46D833FFF890F595FA0892 /* AppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB91DBE5722A4DD2827C70C /* AppModelTests.swift */; };
 		17316BB620BED67B2A0535FD /* MediaPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39CC7FF09334A337238D52A /* MediaPreview.swift */; };
@@ -101,6 +102,7 @@
 		82D526CEFBDC03180C22C7B0 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		87FC3A145630EE7C374F35EB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		901A9E8FAE8C5F22BFAC5226 /* ContentClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentClassificationTests.swift; sourceTree = "<group>"; };
+		9434D37A01F7129AA50A2EB7 /* MainWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowTests.swift; sourceTree = "<group>"; };
 		94504497CC4F0206755583AE /* ProjectSuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSuggestionsTests.swift; sourceTree = "<group>"; };
 		97FF593F67F3568BA342CEE2 /* GitRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitRepository.swift; sourceTree = "<group>"; };
 		9850513DE882E935D6FDC8F1 /* DiskSiftApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskSiftApp.swift; sourceTree = "<group>"; };
@@ -201,6 +203,7 @@
 				05BF02622486A13BB8411A80 /* FileOperationsTests.swift */,
 				BABE629CB9AF63A00D4CFA86 /* FileReviewModelTests.swift */,
 				BED88FB30A53D0D3A770BBFE /* GitWorktreeTests.swift */,
+				9434D37A01F7129AA50A2EB7 /* MainWindowTests.swift */,
 				09567CF2717EE9D6E01B1478 /* ProjectLocatorTests.swift */,
 				2154378CBB69224370014C43 /* ProjectSuggestionSelectionTests.swift */,
 				94504497CC4F0206755583AE /* ProjectSuggestionsTests.swift */,
@@ -397,6 +400,7 @@
 				4B6BBB1AD55F5333AE46F0AC /* FileOperationsTests.swift in Sources */,
 				38D82AD788FC7313E555598F /* FileReviewModelTests.swift in Sources */,
 				2489A82CAAFD38FC3B5FBCED /* GitWorktreeTests.swift in Sources */,
+				0051C86DEBF5F353A85D0EF2 /* MainWindowTests.swift in Sources */,
 				D76502E8DBCAB4C46CE4F8E1 /* ProjectLocatorTests.swift in Sources */,
 				BD16EA0BFBE64F9548BBF578 /* ProjectSuggestionSelectionTests.swift in Sources */,
 				30B70A0D6259E332A8AB3A32 /* ProjectSuggestionsTests.swift in Sources */,

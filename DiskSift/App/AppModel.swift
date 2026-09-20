@@ -312,7 +312,11 @@ final class AppModel: ObservableObject {
     }
 
     func trashFiles(_ items: [ContentItem]) async -> Set<String> {
-        guard !isBusy, !items.isEmpty else { return [] }
+        guard !items.isEmpty else { return [] }
+        guard !isBusy else {
+            errorMessage = "Another file operation is in progress."
+            return []
+        }
         isManagingFiles = true
         defer { isManagingFiles = false }
         errorMessage = nil
@@ -331,7 +335,11 @@ final class AppModel: ObservableObject {
     }
 
     func deleteTrashItems(_ items: [ContentItem]) async -> Set<String> {
-        guard !isBusy, !isLoadingTrash, !items.isEmpty else { return [] }
+        guard !items.isEmpty else { return [] }
+        guard !isBusy else {
+            errorMessage = "Another file operation is in progress."
+            return []
+        }
         isManagingFiles = true
         defer { isManagingFiles = false }
         errorMessage = nil

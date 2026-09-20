@@ -11,6 +11,7 @@ final class FileReviewModel: ObservableObject {
     @Published private(set) var count = 0
     @Published private(set) var offset = 0
     @Published private(set) var isLoading = false
+    @Published private(set) var isVerifyingProtection = false
     @Published private(set) var error: String?
     @Published var focused = Set<String>()
     @Published private(set) var protection: [String: FileGitStatus] = [:]
@@ -64,8 +65,11 @@ final class FileReviewModel: ObservableObject {
         }
         if token == generation {
             isLoading = false
+            // Until Git tracking is known, no row can be checked.
+            isVerifyingProtection = true
             let result = await protectionCheck(items)
             guard token == generation, !Task.isCancelled else { return }
+            isVerifyingProtection = false
             let statuses = result.filter { inspectionTokens[$0.key] == initialInspections[$0.key] }
             let visible = Set(items.map(\.path))
             protection = statuses.merging(protection.filter { (checked[$0.key] != nil || visible.contains($0.key)) && statuses[$0.key] == nil }) { new, _ in new }
