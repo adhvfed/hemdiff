@@ -1,6 +1,11 @@
-import Darwin
 import Foundation
 import XCTest
+
+#if os(Linux)
+  import Glibc
+#else
+  import Darwin
+#endif
 
 @testable import HemdiffCore
 
