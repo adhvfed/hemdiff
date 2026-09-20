@@ -38,8 +38,9 @@ public enum GitTracking {
         }
         visited.append(directory.path)
         var marker = stat()
-        let code = directory.appendingPathComponent(".git").withUnsafeFileSystemRepresentation {
-          lstat($0, &marker)
+        let code = directory.appendingPathComponent(".git").withUnsafeFileSystemRepresentation { path -> Int32 in
+          guard let path else { errno = EINVAL; return -1 }
+          return lstat(path, &marker)
         }
         if code == 0 {
           found = .repository(directory)
