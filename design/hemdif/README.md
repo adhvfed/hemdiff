@@ -38,16 +38,11 @@ strok -f design/hemdif/fold-mono.strok export png --width 20 --color '#FFFFFF' -
 strok watch design/hemdif/fold.strok
 ```
 
-## Review
+## Notes
 
-Reviewed the large primary render, monochrome silhouette, app tile, and 16–128 px
-samples against light and dark backgrounds. All three Strøk audits report no
-suggestions. SVG exports retain cubic paths and linear gradients. `size-proof.png`
-is a review contact sheet, not a production asset. The PNGs have transparent
-backgrounds outside their artwork. The generated ICNS was successfully built by
-Apple's iconutil.
+SVG exports retain cubic paths and linear gradients, and the PNGs are transparent
+outside their artwork. `size-proof.png` is a contact sheet for checking the mark
+at small sizes, not a production asset.
 
-Built with the installed `strok 0.1.0`; no renderer modifications were required.
-The app now uses these sources as its Hemdiff identity. The original asset
-filenames remain stable; regenerate and copy exports into the app asset catalog
-when changing the mark.
+After changing the mark, regenerate the exports and copy them into the app asset
+catalog under `DiskSift/Resources/Assets.xcassets/`. Keep the existing filenames.

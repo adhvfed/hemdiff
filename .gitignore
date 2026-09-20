@@ -1,9 +1,7 @@
 .DS_Store
 DerivedData/
 build/
-planning/screenshots/
-*.xcuserstate
 xcuserdata/
-
+*.xcuserstate
 .swiftpm/
 .build/

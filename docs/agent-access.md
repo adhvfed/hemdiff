@@ -23,7 +23,7 @@ candidate IDs, evidence, allocation estimates and whether each candidate is
 currently authorized for cleanup. The inventory covers recognized artifacts, not
 all files on the disk. Xcode DerivedData is not exposed by the headless service.
 
-To authorize cleanup, use the root ID returned above and name the permitted kinds:
+To authorize cleanup, use the root ID returned above and list the permitted kinds:
 
 ```sh
 hemdiff permissions grant ROOT_ID nextBuild swiftBuild rustTarget
@@ -98,7 +98,7 @@ overflow closes the session. The official
 MCP Swift SDK handles negotiation, method routing and cancellation. Stdout carries
 protocol data only.
 
-## SSH and Cloudflare
+## Remote machines over SSH
 
 Install and configure Hemdiff on the target machine first. Its roots, permissions,
 host identity, state and receipts remain there. Do not copy state between machines.
@@ -109,10 +109,10 @@ ssh -T -o RemoteCommand=none -o RequestTTY=no example-host \
   /home/you/.local/bin/hemdiff mcp
 ```
 
-The two overrides bypass an SSH configuration that starts tmux by default. `-T`
-disables terminal allocation, keeping the stdio protocol intact. Your existing
-`ProxyCommand cloudflared access ssh --hostname %h` continues to provide transport.
-The remote shell and login scripts must not write banners to stdout.
+Since the stdio protocol needs a clean channel, `-T` disables terminal allocation
+and `RemoteCommand=none` skips a login command such as a `tmux` attach. The remote
+shell and login scripts must not write banners to stdout. Any existing transport,
+including an SSH `ProxyCommand`, keeps working.
 
 A client configuration can launch SSH directly:
 
@@ -127,11 +127,9 @@ A client configuration can launch SSH directly:
 }
 ```
 
-For T3 Code, configure the agent provider running on the machine where the task
-executes. A remote T3 environment runs its agent there; a local server definition
-then refers to that remote machine. Alternatively, an agent on your Mac can launch
-the SSH definition above. Client-specific configuration and approval interfaces
-vary; Hemdiff does not modify T3's active configuration or inject credentials.
+When an agent runs on the remote machine itself, configure Hemdiff there as a
+local stdio server instead. Client configuration formats and approval dialogs
+differ; Hemdiff changes no client configuration and injects no credentials.
 
 ## Boundaries and practical limits
 

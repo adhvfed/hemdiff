@@ -2,45 +2,16 @@
 
 **Help, my disk is f\*cking full.**
 
-Hemdiff (formerly DiskSift) is a native macOS disk monitor focused on low-overhead visibility and
-safe cleanup of regenerable developer storage: Rust `target`, JavaScript
-`node_modules`, Next.js `.next`, Turbo, Terraform/OpenTofu providers, Python
-tool caches, Maven/Gradle, SwiftPM `.build`, and Xcode `DerivedData` folders. `~/Projects` is scanned directly by default so the inventory does not
-depend on Spotlight indexing being current.
+Hemdiff is a macOS app that finds the build output eating your disk and deletes
+it safely. It knows the folders that developer tools regenerate on the next
+build, checks that each one really belongs to a project, and asks before it
+removes anything. A `hemdiff` command line tool and an MCP server share the same
+rules, so a coding agent can clean a remote Linux box with the same safety net.
 
-Git discovery follows registered worktrees from repositories found in the index
-or a scan location. Hidden and detached checkouts, nested packages, and worktrees
-owned by bare repositories are supported. Hemdiff validates Git's pointers in
-both directions, so stale registrations and submodule pointer files do not become
-worktree results. Each checkout's build artifacts are listed separately; cleanup
-deletes only the confirmed artifact folder, never the checkout or Git metadata.
+## What it cleans
 
-Registered checkouts elsewhere in your home folder receive a direct marker scan.
-Privacy-managed folders, tool caches, and locations outside your home remain
-excluded unless you add an appropriate scan location. Unindexed repositories
-with no discovered connection still need an added folder.
-
-The **Files** view classifies content in your scan locations: video, audio,
-images, documents, archives, disk images and installers, virtual machines, AI
-models, databases and datasets, code, applications, and other files. Add folders
-such as Downloads or Movies in **Scan Locations** to include them.
-
-Select several categories, filter by name or path, and sort by size, name,
-modification date, or location. The complete file index is paged in groups of
-250; checked files stay checked across categories and pages. Use arrow keys to
-navigate, Space to check, and Command-Y to preview. App bundles, photo libraries,
-and VM packages appear as single items. Logs have their own category.
-
-**Move to Trash** shows the exact checked list for confirmation. Files are
-revalidated before moving, and a failed move never falls back to permanent
-deletion. **Trash** measures accessible items and shows the estimated recovery
-from emptying it. Delete checked items or empty the reviewed contents after a
-separate permanent-deletion confirmation. New arrivals are left alone. macOS may
-require Full Disk Access to read Trash; inaccessible contents are reported.
-
-**Cleanup** groups rebuildable output by project or tool. These folders are
-permanently deleted after confirmation. Stop builds and development servers first.
-Rules require the exact default output path plus real, non-symlink marker files:
+Hemdiff only offers a folder for cleanup when it sits at the tool's default
+output path and the project marker next to it is a real file, not a symlink.
 
 | Output | Required project marker |
 | --- | --- |
@@ -53,112 +24,111 @@ Rules require the exact default output path plus real, non-symlink marker files:
 | `.mypy_cache` | `pyproject.toml`, `mypy.ini`, `.mypy.ini`, or `setup.cfg` |
 | `target` (Maven) | `pom.xml` |
 | `build` (Gradle) | `build.gradle` or `build.gradle.kts` |
-| `.build` | `Package.swift` |
-| Xcode DerivedData child | Known user DerivedData container |
+| `.build` (SwiftPM) | `Package.swift` |
+| Xcode `DerivedData` child | The user's DerivedData container |
 
-Terraform state, backend metadata, and lockfiles are preserved. Custom output
-paths and generic folders named `cache` or `dist` are not automatically offered.
-These are practical project conventions, not a guarantee about custom user data.
+Terraform state, backend metadata and lockfiles are kept. Folders with custom
+names such as `cache` or `dist` are never offered automatically.
 
-## CLI, MCP and Linux
+Before a folder is deleted, Hemdiff checks it again: the folder must still be
+the same folder, the marker must still be there, nothing inside may be tracked
+by Git, and no nested repository or mount point may be inside it. Stop running
+builds and dev servers first. Deletion is permanent, and a folder that fails a
+check is skipped and reported.
 
-The standalone `hemdiff` command shares the app's artifact rules and cleanup
-engine. It supports macOS and a static Linux x86-64 build with no Swift runtime
-installation required. MCP exposes scoped inventory, exact cleanup plans and
-receipts; root access and cleanup permissions are explicitly configured locally.
-Use existing SSH for remote hosts, including Cloudflare SSH configurations.
+## Finding projects
 
-See [agent setup and authorization](docs/agent-access.md) for commands, MCP/SSH
-examples, build instructions and current limitations. Ordinary files and Trash
-remain in the Mac app.
+On first launch Hemdiff looks for likely workspaces in your home folder and lets
+you tick the ones to scan. Nothing is scanned until you say so, and nothing is
+ever deleted automatically. **Find Projects…** in Scan Locations repeats the
+search later. Details on how the search picks folders are in
+[docs/workspace-discovery.md](docs/workspace-discovery.md).
 
-Cleanup confirms the selected folders immediately using the existing inventory
-estimate, then performs recursive evidence checks during deletion. The app is
-optimized for reclaiming developer space quickly: running or recently changed
-output may be removed after confirmation. Folder identity, project markers,
-tracked-file protection, nested version-control protection and filesystem
-boundaries still apply. Open files may keep disk space occupied until their
-processes close them.
-The CLI/MCP cleanup policy is unchanged.
+Git worktrees are followed from the repositories Hemdiff finds. Each checkout's
+build output is listed on its own, and cleanup only ever touches the output
+folder, never the checkout or the `.git` data.
 
-## Setup
+Scans run at low priority, are cached between launches, and refresh on their own
+after six hours while the app is open. Disk capacity refreshes without a scan.
 
-First launch automatically finds and preselects likely workspaces on a single
-setup screen. Review the folders or add your own, then start the first scan with
-one action. Discovery can be stopped while retaining results. Choosing Set Up Later
-does not start a scan immediately. Trash access is explained when you visit Trash,
-rather than blocking setup. Nothing is deleted automatically.
+## Files and Trash
 
-Use **Hemdiff → Run Setup Wizard…** to repeat setup without resetting scan folders.
+The **Files** view sorts everything in your scan locations into categories:
+video, audio, images, documents, archives, disk images, virtual machines, AI
+models, databases, code, applications, logs and other. Filter by name, sort by
+size or date, tick files across pages, and press Command-Y to preview one.
+**Move to Trash** shows the exact list first. A file that fails to move is left
+alone. It is never deleted permanently as a fallback.
 
-## Build
+**Trash** shows what emptying it would free. It can delete ticked items or empty
+the reviewed contents after a separate confirmation. macOS may ask for Full Disk
+Access before the app can read Trash.
+
+## Menu bar
+
+The menu bar item shows **Scan Now**, **Clean Build Output…** and the five
+projects with the most build output. Each project has a cleanup action that
+confirms its folders before deleting them. **View → Show Menu Bar Icon** brings
+the item back if you hid it.
+
+## Command line and MCP
+
+The `hemdiff` executable runs on macOS and as a static Linux x86-64 binary with
+no Swift runtime on the target. It lists build output under configured roots,
+prepares an exact cleanup plan, executes it, and writes a receipt. Roots are
+read-only until you grant cleanup for specific artifact kinds. The MCP server
+exposes the same operations over stdio and cannot change roots or grants.
+
+```sh
+tools/build-agent.sh
+build/agent/hemdiff roots add /absolute/path/to/Projects
+build/agent/hemdiff inventory
+```
+
+Setup, SSH use, the tool list and the safety limits are in
+[docs/agent-access.md](docs/agent-access.md).
+
+## Build from source
+
+Hemdiff needs macOS 14 or later, Xcode 16 or later, and
+[xcodegen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 xcodegen generate
-xcodebuild -project DiskSift.xcodeproj -scheme DiskSift -configuration Debug build
+xcodebuild -project DiskSift.xcodeproj -scheme DiskSift -configuration Release build
 ```
 
-Scans run at utility priority, are cached between launches, and refresh while
-Hemdiff remains open once the inventory is six hours old. Disk capacity
-refreshes independently without a filesystem walk. Individual or selected
-folders can be cleaned through an explicit confirmation; every target is
-revalidated before it is permanently deleted.
-
-Cleanup checks the selected folders even while a scan or Trash refresh is running.
-Confirming deletion stops any active scan and waits for its subprocesses to exit
-before removing files. Failed measurements are reported as skipped, and cleanup rejects paths
-with symbolic links in their ancestry. Allocated sizes are estimates: shared APFS
-blocks and snapshots can make the actual free-space increase smaller.
-
-Run the tests with:
+The Xcode project, scheme and Swift module keep the app's original name,
+DiskSift. The built product is `Hemdiff.app`. There is no signed download yet.
+To install a local build over a previous one:
 
 ```sh
+python3 tools/install-app.py PATH/TO/Hemdiff.app
+```
+
+## Tests
+
+```sh
+swift test --package-path Packages/HemdiffCore
+swift test --package-path Packages/HemdiffAgent
 xcodebuild -project DiskSift.xcodeproj -scheme DiskSift \
   -destination 'platform=macOS,arch=arm64' test CODE_SIGNING_ALLOWED=NO
 ```
 
-## Hemdiff identity and review workflow
+CI runs the same suites on macOS and Linux, plus a protocol test that drives the
+built `hemdiff` executable over MCP.
 
-The Fold mark is used in the app icon, menu bar, sidebar, and setup. Source assets
-live in `design/hemdif/`; the app builds as `Hemdiff.app`. The Xcode project,
-scheme, Swift module, bundle identifier, and Application Support location retain
-their original names so existing installations keep their settings and inventory.
+## Repository layout
 
-File selections and category filters survive sidebar navigation. Click a content
-category in Storage to review it directly. Command-F focuses search; Escape
-clears it. Cleanup groups can be collapsed and grouped by Project or Tool. Trash
-supports search, sorting, and checking the visible results. Empty Trash still
-confirms the complete reviewed Trash snapshot, regardless of the search filter.
+- `DiskSift/` is the macOS app.
+- `Packages/HemdiffCore/` holds the artifact rules and the cleanup engine shared
+  by the app and the command line tool.
+- `Packages/HemdiffAgent/` is the `hemdiff` command line tool and MCP server.
+- `design/` holds the editable icon sources and their exports.
+- `tools/` holds build and install scripts.
 
-### Find projects automatically
+## License
 
-Setup finds workspaces automatically. Use **Find Projects…** in Scan Locations
-to discover more later. Review and check the suggested folders before adding them.
-Already-included locations are marked and are not removed by this dialog.
-
-Discovery searches eligible home folders breadth first and queries Spotlight in
-parallel. Git repositories count even without a project manifest. It skips hidden
-folders, generated/dependency directories, symlinks, app bundles, and privacy-managed
-home folders; protected locations can still be added manually. Once a project is
-found, its contents are left for the actual scan. Registered Git worktrees are also
-suggested. There is no entry cap or timeout: results appear during discovery, and
-Stop Search keeps what has been found. You can use selected folders immediately.
-Workspace suggestions favor the shallowest eligible container: a recognizable
-workspace name, multiple independent Git repositories (including nested organization
-layouts), or project-bearing folders in at least half its directory branches.
-Ordinary notes and supporting files do not disqualify a workspace. Home itself,
-protected personal folders and dependency caches stay excluded. Expand a workspace
-to select individual projects; explicit choices survive live regrouping.
-See [the research and heuristic rationale](docs/workspace-discovery.md).
-
-
-The menu bar panel offers **Scan Now** and **Clean Build Output…**, followed by
-the five largest projects by build-output size. Each project has a cleanup action
-that reviews only its build folders. Cleanup opens
-a fixed list of detected build folders for confirmation before deleting anything.
-Use **View → Show Menu Bar Icon** to restore the menu bar item if it is hidden.
-
-For a local development reinstall, run `python3 tools/install-app.py PATH/TO/Hemdiff.app`.
-It verifies the bundle identity, closes the installed app, replaces it with rollback
-on rename failure, and reopens it. It uses ad-hoc signing and leaves no backup app
-bundle behind. Public distribution still requires Developer ID signing and notarization.
+MIT. See [LICENSE](LICENSE). The Linux `statx` header under
+`Packages/HemdiffCore/Sources/HemdiffPOSIX/` is a kernel UAPI header carried
+under the GPL-2.0 Linux syscall note, which permits its use here.
