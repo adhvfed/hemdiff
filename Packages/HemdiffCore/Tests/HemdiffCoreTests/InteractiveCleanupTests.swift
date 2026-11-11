@@ -248,4 +248,38 @@ final class InteractiveCleanupTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: artifact.path))
   }
 
+  func testUnavailableFolderDoesNotBlockReviewingRemainingOutput() throws {
+    let (home, available) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let missing = Artifact(
+      kind: .nodeModules, path: available.projectURL.appendingPathComponent("node_modules").path,
+      projectPath: available.projectPath, allocatedBytes: 999, createdAt: nil, modifiedAt: nil,
+      fileIdentity: available.fileIdentity)
+    let service = InteractiveCleanup(
+      quietInterval: 0, coordinationDirectory: home.appendingPathComponent("coordination"))
+    XCTAssertThrowsError(try service.prepare([missing, available]))
+    let plan = try service.prepare([missing, available], allowingActiveOutput: true)
+    XCTAssertEqual(plan.artifacts, [available])
+    XCTAssertEqual(Set(plan.skippedArtifacts.keys), [missing.id])
+    XCTAssertEqual(plan.estimatedBytes, available.allocatedBytes)
+    XCTAssertEqual(service.execute(plan).reclaimedIDs, [available.id])
+  }
+
+  func testOverrideProtectsCaseVariantsOfVersionControlMetadata() throws {
+    let (home, artifact) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let service = InteractiveCleanup(
+      coordinationDirectory: home.appendingPathComponent("coordination"))
+    let plan = try service.prepare([artifact], allowingActiveOutput: true)
+    for name in [".GIT", ".Hg", ".SVN"] {
+      let metadata = artifact.url.appendingPathComponent(name)
+      try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+      XCTAssertTrue(service.execute(plan).reclaimedIDs.isEmpty, name)
+      XCTAssertEqual(
+        try String(contentsOf: artifact.url.appendingPathComponent("output"), encoding: .utf8),
+        "original")
+      try FileManager.default.removeItem(at: metadata)
+    }
+  }
+
 }

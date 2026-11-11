@@ -167,7 +167,7 @@ struct ArtifactFilesystem {
       bytes = bytes.addingClamped(stamp.allocatedBytes)
       let entries = try dir.entries()
       while let name = try entries.next() {
-        guard ![".git", ".hg", ".svn"].contains(name) else {
+        guard ![".git", ".hg", ".svn"].contains(name.lowercased()) else {
           throw AgentServiceError.refused("Nested version-control data cannot be cleaned")
         }
         if cancelled() { throw CancellationError() }
@@ -258,7 +258,7 @@ struct ArtifactFilesystem {
       let entries = try directory.entries()
       while let name = try entries.next() {
         if cancelled() { throw CancellationError() }
-        guard ![".git", ".hg", ".svn"].contains(name) else {
+        guard ![".git", ".hg", ".svn"].contains(name.lowercased()) else {
           throw AgentServiceError.refused("Nested version-control data cannot be cleaned")
         }
         let entry = try directory.stat(name)

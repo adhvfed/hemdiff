@@ -7,6 +7,7 @@ public struct InteractiveCleanupPlan: Sendable {
   public let expiresAt: Date
   public let estimatedBytes: Int64
   public let allowsActiveOutput: Bool
+  public let skippedArtifacts: [String: String]
   fileprivate let snapshots: [String: ArtifactStamp]
   fileprivate let serviceID: UUID
 }
@@ -77,18 +78,29 @@ public struct InteractiveCleanup: Sendable {
       // that confirmation wait for a recursive walk of a potentially enormous
       // dependency tree; the full inspection runs after Delete is pressed.
       var snapshots: [String: ArtifactStamp] = [:]
+      var available: [Artifact] = []
+      var skipped: [String: String] = [:]
       for artifact in artifacts {
         if cancelled() { throw CancellationError() }
-        try validator.validate(artifact)
-        snapshots[artifact.id] = try ArtifactFilesystem.snapshot(
-          artifact, quietInterval: 0, now: Date(), cancelled: cancelled,
-          validatedKnownContainer: artifact.kind.isKnownContainerArtifact,
-          allowingContentChanges: true, rootOnly: true)
+        do {
+          try validator.validate(artifact)
+          snapshots[artifact.id] = try ArtifactFilesystem.snapshot(
+            artifact, quietInterval: 0, now: Date(), cancelled: cancelled,
+            validatedKnownContainer: artifact.kind.isKnownContainerArtifact,
+            allowingContentChanges: true, rootOnly: true)
+          available.append(artifact)
+        } catch is CancellationError { throw CancellationError() } catch {
+          skipped[artifact.id] = error.localizedDescription
+        }
+      }
+      guard !available.isEmpty else {
+        throw AgentServiceError.refused(
+          "None of the selected folders can be cleaned. " + skipped.values.sorted().prefix(2).joined(separator: " "))
       }
       return .init(
-        artifacts: artifacts, expiresAt: Date().addingTimeInterval(lifetime),
-        estimatedBytes: artifacts.reduce(0) { $0 + max(0, $1.allocatedBytes) },
-        allowsActiveOutput: true, snapshots: snapshots, serviceID: serviceID)
+        artifacts: available, expiresAt: Date().addingTimeInterval(lifetime),
+        estimatedBytes: available.reduce(0) { $0.addingClamped(max(0, $1.allocatedBytes)) },
+        allowsActiveOutput: true, skippedArtifacts: skipped, snapshots: snapshots, serviceID: serviceID)
     }
 
     var snapshots: [String: ArtifactStamp] = [:]
@@ -110,7 +122,8 @@ public struct InteractiveCleanup: Sendable {
     }
     return .init(
       artifacts: artifacts, expiresAt: Date().addingTimeInterval(lifetime),
-      estimatedBytes: bytes, allowsActiveOutput: allowingActiveOutput, snapshots: snapshots, serviceID: serviceID)
+      estimatedBytes: bytes, allowsActiveOutput: false, skippedArtifacts: [:],
+      snapshots: snapshots, serviceID: serviceID)
   }
 
   public func execute(_ plan: InteractiveCleanupPlan, cancelled: () -> Bool = { false })
@@ -146,7 +159,7 @@ public struct InteractiveCleanup: Sendable {
               bytes = bytes.addingClamped(try ArtifactFilesystem.removeActive(
                 artifact, stamp: current, cancelled: cancelled))
               removed.insert(artifact.id)
-            } catch {
+            } catch is CancellationError { throw CancellationError() } catch {
               failures[artifact.id] = error.localizedDescription
             }
           }

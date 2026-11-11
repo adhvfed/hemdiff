@@ -12,6 +12,8 @@ struct ReclaimView: View {
     @State private var groupByProject = true
     @State private var collapsed = Set<String>()
 
+    private var reviewedArtifacts: [Artifact] { reviewPlan?.artifacts ?? pending }
+
     private var visible: [Artifact] {
         model.snapshot.artifacts.filter {
             (family == "All tools" || $0.kind.family == family)
@@ -141,13 +143,24 @@ struct ReclaimView: View {
         .sheet(isPresented: $confirmsReclaim) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Delete build output?").font(.title2.weight(.semibold))
-                Text("\(pending.count) \(pending.count == 1 ? "folder" : "folders") · \(ByteText.string(reviewPlan?.estimatedBytes ?? pending.reduce(0) { $0 + $1.allocatedBytes })) estimated").font(.title3)
+                Text("\(reviewedArtifacts.count) \(reviewedArtifacts.count == 1 ? "folder" : "folders") · \(ByteText.string(reviewPlan?.estimatedBytes ?? pending.reduce(0) { $0 + $1.allocatedBytes })) estimated").font(.title3)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        ForEach(pending) { artifact in
+                        ForEach(reviewedArtifacts) { artifact in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(artifact.path.abbreviatingHome).font(.callout.weight(.medium))
                                 Text(artifact.kind.consequence).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        if let reviewPlan, !reviewPlan.skippedArtifacts.isEmpty {
+                            Divider()
+                            Text("Unavailable folders will be skipped").font(.callout.weight(.medium))
+                            ForEach(pending.filter { reviewPlan.skippedArtifacts[$0.id] != nil }) { artifact in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(artifact.path.abbreviatingHome).font(.caption.weight(.medium))
+                                    Text(reviewPlan.skippedArtifacts[artifact.id] ?? "")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
