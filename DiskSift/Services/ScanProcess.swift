@@ -2,14 +2,21 @@ import Darwin
 import Foundation
 
 enum ScanProcess {
-    /// Drain stdout while waiting, discard stderr, and reap children on cancellation.
+    /// Drain stdout while waiting, discard stderr, and reap children on cancellation or timeout.
     /// A noisy command must never fill a pipe and stall the inventory indefinitely.
-    static func output(executable: String, arguments: [String]) throws -> Data {
+    static func output(executable: String, arguments: [String], timeout: TimeInterval = 60) throws -> Data {
         try Task.checkCancellation()
+        guard timeout.isFinite, timeout > 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(EINVAL), userInfo: [
+                NSLocalizedDescriptionKey: "Command timeout must be finite and greater than zero."
+            ])
+        }
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
         let process = Process()
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.qualityOfService = .utility
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
@@ -21,20 +28,25 @@ enum ScanProcess {
         reader.enter()
         DispatchQueue.global(qos: .utility).async {
             defer { reader.leave() }
-            while true {
+            while autoreleasepool(invoking: {
                 let chunk = pipe.fileHandleForReading.availableData
-                if chunk.isEmpty { break }
+                guard !chunk.isEmpty else { return false }
                 buffer.append(chunk)
-            }
+                return true
+            }) {}
         }
         // Wake immediately on exit; the timeout only bounds cancellation latency.
         while terminated.wait(timeout: .now() + .milliseconds(20)) == .timedOut {
-            if Task.isCancelled {
+            let cancelled = Task.isCancelled
+            if cancelled || ProcessInfo.processInfo.systemUptime >= deadline {
                 // These are read-only system commands with no state to flush.
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
                 process.waitUntilExit()
                 reader.wait()
-                throw CancellationError()
+                if cancelled { throw CancellationError() }
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(ETIMEDOUT), userInfo: [
+                    NSLocalizedDescriptionKey: "\(URL(fileURLWithPath: executable).lastPathComponent) took too long. Try scanning a smaller folder."
+                ])
             }
         }
         process.waitUntilExit()

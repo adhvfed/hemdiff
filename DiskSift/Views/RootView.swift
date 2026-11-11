@@ -102,7 +102,7 @@ struct RootView: View {
                     .ignoresSafeArea()
             }
         }
-        .onChange(of: model.removedContentPaths) { _, paths in
+        .onReceive(model.contentRemovals) { paths in
             let checked = Set(fileReview.checked.keys.filter { file in
                 paths.contains { file == $0 || file.hasPrefix($0 + "/") }
             })

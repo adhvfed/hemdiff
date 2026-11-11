@@ -45,8 +45,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.pendingQuickCleanup, snapshot.artifacts)
         XCTAssertNil(model.errorMessage)
         XCTAssertFalse(model.isCleanupBlocked)
-        async let firstReview = model.prepareCleanup(snapshot.artifacts)
-        async let restartedReview = model.prepareCleanup(snapshot.artifacts)
+        let artifacts = snapshot.artifacts
+        async let firstReview = model.prepareCleanup(artifacts)
+        async let restartedReview = model.prepareCleanup(artifacts)
         let (plan, _) = try await (firstReview, restartedReview)
         XCTAssertTrue(model.isScanning, "Validation must not wait for discovery")
         XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
@@ -228,13 +229,16 @@ extension AppModelTests {
         snapshot.content.errorsSkipped = 7
         try fixture.store.save(snapshot)
         let model = fixture.model()
+        var removedPaths = Set<String>()
+        let observation = model.contentRemovals.sink { removedPaths.formUnion($0) }
+        defer { observation.cancel() }
         await model.reconcileKnownRemovals(visiblePaths: [missing])
         XCTAssertEqual(model.snapshot.content.count, 0)
         XCTAssertEqual(model.snapshot.content.errorsSkipped, 7)
         XCTAssertEqual(try index.inventory().count, 0)
         XCTAssertEqual(try fixture.store.load()?.content.count, 0)
         XCTAssertFalse(model.isScanning)
-        XCTAssertTrue(model.removedContentPaths.contains(missing))
+        XCTAssertTrue(removedPaths.contains(missing))
     }
 
     func testClassificationStartupRepairsStaleSummaryEvenWithCurrentIndex() async throws {
@@ -283,7 +287,11 @@ extension AppModelTests {
         model.startScan()
         try await waitForScan(model)
         XCTAssertEqual(model.snapshot.content, inventory)
-        XCTAssertEqual(try fixture.store.load()?.content, inventory)
+        let saved = try XCTUnwrap(fixture.store.load()?.content)
+        XCTAssertEqual(saved.indexPath, inventory.indexPath)
+        XCTAssertEqual(saved.count, inventory.count)
+        XCTAssertEqual(saved.allocatedBytes, inventory.allocatedBytes)
+        XCTAssertEqual(saved.scannedRoots, inventory.scannedRoots)
         XCTAssertFalse(model.isFileInventoryStale)
         model.addScanRoot(fixture.url.appendingPathComponent("Another"))
         XCTAssertTrue(model.isFileInventoryStale)

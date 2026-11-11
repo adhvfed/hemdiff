@@ -37,6 +37,7 @@ final class ContentIndex {
         let flags = create ? SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE : SQLITE_OPEN_READWRITE
         guard sqlite3_open_v2(path, &database, flags, nil) == SQLITE_OK else { throw CocoaError(.fileReadUnknown) }
         sqlite3_busy_timeout(database, 3_000)
+        sqlite3_progress_handler(database, 1_000, { _ in Task.isCancelled ? 1 : 0 }, nil)
         if create {
             try execute("PRAGMA journal_mode=DELETE; CREATE TABLE files(path TEXT PRIMARY KEY, name TEXT, kind TEXT, bytes INTEGER, modified REAL, item BLOB); BEGIN TRANSACTION;")
             guard sqlite3_prepare_v2(database, "INSERT OR REPLACE INTO files VALUES(?,?,?,?,?,?)", -1, &insertStatement, nil) == SQLITE_OK else { throw failure() }
@@ -52,7 +53,14 @@ final class ContentIndex {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("DiskSift/Indexes", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return try ContentIndex(path: directory.appendingPathComponent("\(UUID().uuidString).sqlite").path, create: true)
+        let path = directory.appendingPathComponent("\(UUID().uuidString).sqlite").path
+        do {
+            return try ContentIndex(path: path, create: true)
+        } catch {
+            try? FileManager.default.removeItem(atPath: path)
+            try? FileManager.default.removeItem(atPath: path + "-journal")
+            throw error
+        }
     }
 
     func discard() {
@@ -87,8 +95,7 @@ final class ContentIndex {
 
     func page(kinds: Set<ContentKind>, search: String, order: FileOrder, offset: Int, limit: Int = 250, excluding removedPaths: [String] = []) throws -> ContentPage {
         let types = kinds.map(\.rawValue).sorted()
-        var filter = (types.isEmpty ? "1" : "kind IN (\(types.map { _ in "?" }.joined(separator: ",")))")
-            + " AND instr(lower(path),lower(?)) > 0"
+        var filter = types.isEmpty ? "1" : "kind IN (\(types.map { _ in "?" }.joined(separator: ",")))"
         let ordering: String
         switch order {
         case .size: ordering = "bytes DESC, path"
@@ -96,7 +103,11 @@ final class ContentIndex {
         case .modified: ordering = "modified DESC, path"
         case .path: ordering = "path COLLATE NOCASE"
         }
-        var values = types + [search]
+        var values = types
+        if !search.isEmpty {
+            filter += " AND instr(lower(path),lower(?)) > 0"
+            values.append(search)
+        }
         for removed in removedPaths {
             filter += " AND NOT (path = ? OR (path >= ? AND path < ?))"
             values += [removed, removed + "/", removed + "0"]
@@ -160,7 +171,9 @@ final class ContentIndex {
         var result = ContentInventory(summaries: summaries)
         result.indexPath = path
         for index in result.summaries.indices {
-            result.summaries[index].largestItems = try page(kinds: [result.summaries[index].kind], search: "", order: .size, offset: 0, limit: 100).items
+            result.summaries[index].largestItems = try rows(
+                "SELECT item FROM files WHERE kind = ? ORDER BY bytes DESC, path LIMIT \(ContentInventory.itemLimitPerKind)",
+                values: [result.summaries[index].kind.rawValue], decode)
         }
         return result
     }
@@ -170,9 +183,14 @@ final class ContentIndex {
         _ = value.withCString { sqlite3_bind_text(statement, index, $0, -1, transient) }
     }
     private func execute(_ sql: String) throws {
-        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else { throw failure() }
+        try Task.checkCancellation()
+        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
+            try Task.checkCancellation()
+            throw failure()
+        }
     }
     private func rows<T>(_ sql: String, values: [String], _ read: (OpaquePointer) throws -> T) throws -> [T] {
+        try Task.checkCancellation()
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { throw failure() }
         defer { sqlite3_finalize(statement) }
@@ -181,7 +199,10 @@ final class ContentIndex {
         while true {
             let status = sqlite3_step(statement)
             if status == SQLITE_DONE { return result }
-            guard status == SQLITE_ROW else { throw failure() }
+            guard status == SQLITE_ROW else {
+                try Task.checkCancellation()
+                throw failure()
+            }
             result.append(try read(statement))
         }
     }

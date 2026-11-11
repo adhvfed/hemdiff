@@ -218,14 +218,9 @@ struct ArtifactScanner: Sendable {
         directories: Int,
         errors: Int
     ) {
-        let data = try ScanProcess.output(executable: "/usr/sbin/taskpolicy", arguments: [
-            "-b",
-            "-d", "throttle",
-            "-c", "utility",
-            "/usr/bin/du",
-            "-skx",
-            url.path,
-        ])
+        let data = try ScanProcess.output(
+            executable: "/usr/bin/du", arguments: ["-skx", url.path]
+        )
         guard let text = String(data: data, encoding: .utf8),
               let kilobytesText = text.split(whereSeparator: \.isWhitespace).first,
               let kilobytes = Int64(kilobytesText), kilobytes >= 0,

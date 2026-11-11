@@ -85,3 +85,70 @@ extension FileReviewModelTests {
         XCTAssertEqual(review.checked.count, 1)
     }
 }
+
+extension FileReviewModelTests {
+    func testCancellationDuringProtectionCheckClearsBusyState() async throws {
+        var builder = ContentInventoryBuilder()
+        builder.record(ContentItem(path: "/fixture/file", kind: .other, allocatedBytes: 1, modifiedAt: nil, isPackage: false))
+        let started = expectation(description: "Protection check started")
+        let review = FileReviewModel(protectionCheck: { _ in
+            started.fulfill()
+            try? await Task.sleep(for: .seconds(30))
+            return [:]
+        })
+        let task = Task { await review.load(builder.inventory) }
+        await fulfillment(of: [started], timeout: 10)
+        task.cancel()
+        await task.value
+        XCTAssertFalse(review.isLoading)
+        XCTAssertFalse(review.isVerifyingProtection)
+        XCTAssertNil(review.error)
+    }
+
+    func testReplacementScanDiscardsSelectionsFromPreviousIndex() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("HemdiffReview-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let review = FileReviewModel(protectionCheck: { items in
+            Dictionary(uniqueKeysWithValues: items.map { ($0.path, .untracked) })
+        })
+        for scan in 0..<2 {
+            let index = try ContentIndex(path: directory.appendingPathComponent("\(scan).sqlite").path, create: true)
+            try index.append(ContentItem(path: "/fixture/\(scan)", kind: .other, allocatedBytes: 1, modifiedAt: nil, isPackage: false))
+            try index.finish()
+            await review.load(try index.inventory())
+            XCTAssertTrue(review.checked.isEmpty)
+            review.checkPage()
+            XCTAssertEqual(review.checked.count, 1)
+        }
+        XCTAssertEqual(Set(review.checked.keys), ["/fixture/1"])
+        XCTAssertEqual(Set(review.protection.keys), ["/fixture/1"])
+    }
+    func testNewQueryCancelsPreviousProtectionInspection() async throws {
+        var builder = ContentInventoryBuilder()
+        for name in ["first", "second"] {
+            builder.record(ContentItem(path: "/fixture/\(name)", kind: .other, allocatedBytes: 1, modifiedAt: nil, isPackage: false))
+        }
+        let started = expectation(description: "First inspection started")
+        let cancelled = expectation(description: "Obsolete inspection cancelled")
+        let review = FileReviewModel(protectionCheck: { items in
+            if items.first?.path == "/fixture/first" {
+                started.fulfill()
+                do { try await Task.sleep(for: .seconds(30)) }
+                catch is CancellationError { cancelled.fulfill() }
+                catch {}
+            }
+            return Dictionary(uniqueKeysWithValues: items.map { ($0.path, .untracked) })
+        })
+        review.search = "first"
+        let previous = Task { await review.load(builder.inventory) }
+        await fulfillment(of: [started], timeout: 10)
+        review.search = "second"
+        await review.load(builder.inventory)
+        await fulfillment(of: [cancelled], timeout: 10)
+        await previous.value
+        XCTAssertEqual(review.items.map(\.path), ["/fixture/second"])
+        XCTAssertFalse(review.isVerifyingProtection)
+    }
+
+}

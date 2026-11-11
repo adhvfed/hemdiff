@@ -20,7 +20,10 @@ final class ArtifactRulesTests: XCTestCase {
         try file(root.appendingPathComponent("server.log"))
         try file(root.appendingPathComponent("server.log.1.gz"))
         try file(root.appendingPathComponent("ordinary/build/output"))
-        let scan = try await ArtifactScanner().scan(roots: [root])
+        let scan = try await ArtifactScanner().scan(roots: [root], includingFiles: true)
+        defer {
+            if let path = scan.content.indexPath { try? FileManager.default.removeItem(atPath: path) }
+        }
         XCTAssertEqual(Set(scan.artifacts.map(\.kind)), Set(cases.map(\.0)))
         XCTAssertEqual(scan.content.summaries.first { $0.kind == .logs }?.count, 2)
         XCTAssertFalse(scan.content.summaries.flatMap(\.largestItems).contains { $0.path.contains(".turbo/cache/") })

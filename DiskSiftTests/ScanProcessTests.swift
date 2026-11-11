@@ -24,4 +24,15 @@ final class ScanProcessTests: XCTestCase {
         } catch is CancellationError { }
         XCTAssertLessThan(Date().timeIntervalSince(started), 2)
     }
+    func testDeadlineStopsUnresponsiveCommandWithoutCancellation() throws {
+        let started = Date()
+        XCTAssertThrowsError(try ScanProcess.output(
+            executable: "/bin/sleep", arguments: ["30"], timeout: 0.15
+        )) { error in
+            XCTAssertEqual((error as NSError).domain, NSPOSIXErrorDomain)
+            XCTAssertEqual((error as NSError).code, Int(ETIMEDOUT))
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+    }
+
 }

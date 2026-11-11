@@ -21,7 +21,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isLoadingTrash = false
     @Published private(set) var isManagingFiles = false
     @Published private(set) var contentRevision = 0
-    @Published private(set) var removedContentPaths = Set<String>()
+    let contentRemovals = PassthroughSubject<Set<String>, Never>()
     @Published private(set) var isUpdatingInventory = false
     @Published var isShowingSetup = false
     @Published var setupPage = 0 {
@@ -193,12 +193,14 @@ final class AppModel: ObservableObject {
                 var completed = try await scanner.scan(configuration: configuration) { progress in
                     progressRelay.send(progress)
                 }
-                guard let self, !Task.isCancelled else { return }
+                guard let self, !Task.isCancelled else {
+                    if let path = completed.content.indexPath { Self.removeManagedIndex(path) }
+                    return
+                }
                 let previousIndex = self.snapshot.content.indexPath
                 if !includingFiles {
                     completed.content = self.snapshot.content
                 } else {
-                    self.removedContentPaths.removeAll()
                     self.contentRevision += 1
                 }
                 self.snapshot = completed
@@ -310,10 +312,11 @@ final class AppModel: ObservableObject {
             snapshot = snapshot.removingArtifacts(withIDs: result.reclaimedIDs)
             selectedArtifactIDs.subtract(result.reclaimedIDs)
             await reconcileRemovedPaths(plan.artifacts.filter { result.reclaimedIDs.contains($0.id) }.map(\.path))
-            refreshVolume()
             noticeMessage = "Deleted \(result.reclaimedIDs.count) folder\(result.reclaimedIDs.count == 1 ? "" : "s") (\(ByteText.compact(result.reclaimedBytes)))."
         }
 
+        // A failed cleanup can still have removed some entries from a folder.
+        refreshVolume()
         if !result.failures.isEmpty {
             let details = result.failures.values.prefix(2).joined(separator: " ")
             errorMessage = "\(result.failures.count) folder\(result.failures.count == 1 ? "" : "s") could not be deleted. \(details)"
@@ -373,7 +376,7 @@ final class AppModel: ObservableObject {
     /// Reconcile successful operations by path, never by rerunning discovery.
     private func reconcileRemovedPaths(_ paths: [String]) async {
         guard !paths.isEmpty else { return }
-        removedContentPaths.formUnion(paths)
+        contentRemovals.send(Set(paths))
         let previousContent = snapshot.content
         snapshot.content = snapshot.content.removing(paths: paths)
         contentRevision += 1

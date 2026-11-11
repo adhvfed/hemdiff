@@ -46,4 +46,24 @@ final class ContentIndexUpdateTests: XCTestCase {
         XCTAssertEqual(updated.allocatedBytes, 10)
         XCTAssertEqual(updated.summaries.first?.kind, .images)
     }
+    func testCancelledPageQueryDoesNotReturnInventoryOrDamageIndex() async throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("cancel-index-\(UUID()).sqlite").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let index = try ContentIndex(path: path, create: true)
+        try index.append(ContentItem(path: "/fixture/file", kind: .other, allocatedBytes: 1, modifiedAt: nil, isPackage: false))
+        try index.finish()
+        let (gate, continuation) = AsyncStream<Void>.makeStream()
+        let task = Task.detached {
+            for await _ in gate { break }
+            return try ContentIndex(path: path).page(kinds: [], search: "file", order: .size, offset: 0)
+        }
+        task.cancel()
+        continuation.finish()
+        do {
+            _ = try await task.value
+            XCTFail("Expected query cancellation")
+        } catch is CancellationError {}
+        XCTAssertEqual(try index.inventory().count, 1)
+    }
+
 }
