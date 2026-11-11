@@ -48,10 +48,10 @@ public struct InteractiveCleanup: Sendable {
           throw AgentServiceError.refused(assessment.detail)
         }
       }
-      return try ArtifactFilesystem.snapshot(
+      return try ArtifactFilesystem.inspect(
         artifact, quietInterval: quietInterval, now: Date(),
         cancelled: cancelled, validatedKnownContainer: artifact.kind.isKnownContainerArtifact,
-        allowingContentChanges: allowingActiveOutput)
+        allowingContentChanges: allowingActiveOutput, retainingContents: !allowingActiveOutput).stamp
     } catch is CancellationError { throw CancellationError() } catch {
       throw AgentServiceError.refused("\(artifact.path): \(error.localizedDescription)")
     }
@@ -140,8 +140,11 @@ public struct InteractiveCleanup: Sendable {
                 throw AgentServiceError.refused(
                   "Build output location or project marker changed after review.")
               }
-              bytes += try ArtifactFilesystem.removeActive(
-                artifact, stamp: current, cancelled: cancelled)
+              guard Date() < plan.expiresAt else {
+                throw AgentServiceError.refused("Cleanup review expired during inspection. Review the folders again.")
+              }
+              bytes = bytes.addingClamped(try ArtifactFilesystem.removeActive(
+                artifact, stamp: current, cancelled: cancelled))
               removed.insert(artifact.id)
             } catch {
               failures[artifact.id] = error.localizedDescription
@@ -170,11 +173,8 @@ public struct InteractiveCleanup: Sendable {
           guard Date() < plan.expiresAt else {
             throw AgentServiceError.refused("Cleanup review expired during inspection. Review the folders again.")
           }
-          if plan.allowsActiveOutput {
-            bytes += try ArtifactFilesystem.removeActive(artifact, stamp: current, cancelled: cancelled)
-          } else {
-            bytes += try ArtifactFilesystem.remove(artifact, stamp: current, cancelled: cancelled)
-          }
+          bytes = bytes.addingClamped(
+            try ArtifactFilesystem.remove(artifact, stamp: current, cancelled: cancelled))
           removed.insert(artifact.id)
         }
       }

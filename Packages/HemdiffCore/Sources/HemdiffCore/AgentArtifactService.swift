@@ -108,13 +108,9 @@ public final class AgentArtifactService {
         throw AgentServiceError.refused("Mount boundary skipped: \(url.path)")
       }
       visited += 1
-      let names = try directory.names()
-      let nameSet = Set(names)
       var artifactFirstComponents = Set<String>()
       for kind in ArtifactKind.allCases
       where !kind.isKnownContainerArtifact
-        && nameSet.contains(String(kind.folderName.split(separator: "/")[0]))
-        && !nameSet.isDisjoint(with: kind.markerNames)
         && ArtifactRules.matches(kind, project: url)
       {
         let output = url.appendingPathComponent(kind.folderName, isDirectory: true)
@@ -124,11 +120,11 @@ public final class AgentArtifactService {
           let artifact = Artifact(
             kind: kind, path: output.path, projectPath: url.path, allocatedBytes: 0, createdAt: nil,
             modifiedAt: nil, fileIdentity: identity)
-          let stamp = try ArtifactFilesystem.snapshot(
-            artifact, quietInterval: 0, now: Date(), cancelled: cancelled)
-          let bytes = stamp.nodes.values.reduce(Int64(0)) { $0.addingClamped($1.allocatedBytes) }
+          let inspection = try ArtifactFilesystem.inspect(
+            artifact, quietInterval: 0, now: Date(), cancelled: cancelled, retainingContents: false)
+          let stamp = inspection.stamp
           let measured = Artifact(
-            kind: kind, path: output.path, projectPath: url.path, allocatedBytes: bytes,
+            kind: kind, path: output.path, projectPath: url.path, allocatedBytes: inspection.allocatedBytes,
             createdAt: nil, modifiedAt: stamp.nodes[""]?.modified, fileIdentity: identity)
           candidates.append(
             ArtifactCandidate(
@@ -139,8 +135,9 @@ public final class AgentArtifactService {
           errors.append("\(output.path): \(error.localizedDescription)")
         }
       }
-      for name in names
-      where !pruned.contains(name) && !artifactFirstComponents.contains(name) {
+      let entries = try directory.entries()
+      while let name = try entries.next() {
+        guard !pruned.contains(name), !artifactFirstComponents.contains(name) else { continue }
         if cancelled() { throw CancellationError() }
         let child = try directory.stat(name)
         if child.directory {
@@ -371,11 +368,12 @@ public final class AgentArtifactService {
       kind: kind, path: output.path, projectPath: project.path,
       allocatedBytes: 0, createdAt: nil, modifiedAt: nil, fileIdentity: identity)
     try ArtifactReclaimer().validate(artifact)
-    let stamp = try ArtifactFilesystem.snapshot(
-      artifact, quietInterval: 0, now: Date(), cancelled: cancelled)
+    let inspection = try ArtifactFilesystem.inspect(
+      artifact, quietInterval: 0, now: Date(), cancelled: cancelled, retainingContents: false)
+    let stamp = inspection.stamp
     let measured = Artifact(
       kind: kind, path: output.path, projectPath: project.path,
-      allocatedBytes: stamp.nodes.values.reduce(Int64(0)) { $0.addingClamped($1.allocatedBytes) },
+      allocatedBytes: inspection.allocatedBytes,
       createdAt: nil, modifiedAt: stamp.nodes[""]?.modified, fileIdentity: identity)
     return ArtifactCandidate(
       id: measured.id, rootID: root.id, artifact: measured,

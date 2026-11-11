@@ -61,6 +61,65 @@ final class InteractiveCleanupTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: artifact.projectURL.appendingPathComponent("package.json").path))
   }
 
+  func testStreamingInspectionRetainsOnlyRootEvidenceAndStillChecksDescendants() throws {
+    let (home, artifact) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let nested = artifact.url.appendingPathComponent("nested")
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    for index in 0..<2_000 {
+      try Data("output".utf8).write(to: nested.appendingPathComponent("file-\(index)"))
+    }
+    let full = try ArtifactFilesystem.snapshot(
+      artifact, quietInterval: 0, now: Date(), cancelled: { false })
+    let measured = try ArtifactFilesystem.inspect(
+      artifact, quietInterval: 0, now: Date(), cancelled: { false }, retainingContents: false)
+    XCTAssertEqual(measured.stamp.nodes.count, 1)
+    XCTAssertEqual(full.nodes.count, 2_003)
+    XCTAssertTrue(full.matchesLocation(measured.stamp))
+    XCTAssertEqual(measured.allocatedBytes, full.nodes.values.reduce(0) { $0 + $1.allocatedBytes })
+
+    try FileManager.default.createDirectory(
+      at: nested.appendingPathComponent(".git"), withIntermediateDirectories: true)
+    XCTAssertThrowsError(try ArtifactFilesystem.inspect(
+      artifact, quietInterval: 0, now: Date(), cancelled: { false }, retainingContents: false))
+  }
+
+  func testStreamingDeletionRemovesEveryEntryInWideDirectory() throws {
+    let (home, artifact) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    for index in 0..<2_000 {
+      try Data("output".utf8).write(to: artifact.url.appendingPathComponent("file-\(index)"))
+    }
+    let service = InteractiveCleanup(
+      coordinationDirectory: home.appendingPathComponent("coordination"))
+    let plan = try service.prepare([artifact], allowingActiveOutput: true)
+    let result = service.execute(plan)
+    XCTAssertEqual(result.reclaimedIDs, [artifact.id])
+    XCTAssertTrue(result.failures.isEmpty)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: artifact.path))
+  }
+
+  func testOverrideExpiringDuringInspectionPreservesOutput() throws {
+    let (home, artifact) = try fixture()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let service = InteractiveCleanup(
+      lifetime: 1, coordinationDirectory: home.appendingPathComponent("coordination"))
+    let plan = try service.prepare([artifact], allowingActiveOutput: true)
+    var delayed = false
+    let result = service.execute(plan, cancelled: {
+      if !delayed {
+        delayed = true
+        Thread.sleep(forTimeInterval: 1.1)
+      }
+      return false
+    })
+    XCTAssertTrue(result.reclaimedIDs.isEmpty)
+    XCTAssertFalse(result.failures.isEmpty)
+    XCTAssertEqual(
+      try String(contentsOf: artifact.url.appendingPathComponent("output"), encoding: .utf8),
+      "original")
+  }
+
   func testOverrideRejectsReplacedRoot() throws {
     let (home, artifact) = try fixture()
     defer { try? FileManager.default.removeItem(at: home) }

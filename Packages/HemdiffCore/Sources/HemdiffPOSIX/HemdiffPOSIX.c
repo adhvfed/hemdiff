@@ -149,35 +149,37 @@ int hmd_private_directory(const char *path) {
     return fd;
 }
 
-char *hmd_names(int fd, size_t *length) {
-    // dup(fd) shares its directory offset; openat(".") creates an independent enumeration.
+struct hmd_directory {
+    DIR *stream;
+};
+
+hmd_directory *hmd_open_entries(int fd) {
+    // dup(fd) shares its offset; openat(".") gives each cursor an independent position.
     int copy = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (copy < 0) return NULL;
-    DIR *directory = fdopendir(copy);
-    if (!directory) { close(copy); return NULL; }
-    size_t used = 0, capacity = 1024;
-    char *bytes = malloc(capacity);
-    if (!bytes) { closedir(directory); return NULL; }
-    struct dirent *entry;
-    errno = 0;
-    while ((entry = readdir(directory))) {
-        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
-        size_t count = strlen(entry->d_name) + 1;
-        if (used + count > capacity) {
-            capacity = (used + count) * 2;
-            char *expanded = realloc(bytes, capacity);
-            if (!expanded) { free(bytes); closedir(directory); errno = ENOMEM; return NULL; }
-            bytes = expanded;
-        }
-        memcpy(bytes + used, entry->d_name, count);
-        used += count;
+    DIR *stream = fdopendir(copy);
+    if (!stream) { close(copy); return NULL; }
+    hmd_directory *directory = malloc(sizeof(*directory));
+    if (!directory) { closedir(stream); return NULL; }
+    directory->stream = stream;
+    return directory;
+}
+
+// The name is valid until the next call. Distinguish EOF from an enumeration error.
+int hmd_next_entry(hmd_directory *directory, const char **name) {
+    for (;;) {
         errno = 0;
+        struct dirent *entry = readdir(directory->stream);
+        if (!entry) return errno ? -1 : 0;
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        *name = entry->d_name;
+        return 1;
     }
-    int error = errno;
-    closedir(directory);
-    if (error) { free(bytes); errno = error; return NULL; }
-    *length = used;
-    return bytes;
+}
+
+void hmd_close_entries(hmd_directory *directory) {
+    closedir(directory->stream);
+    free(directory);
 }
 
 int hmd_unlink(int fd, const char *name, int directory) {

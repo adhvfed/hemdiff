@@ -78,19 +78,41 @@ final class DirectoryDescriptor {
     }
     return NodeStamp(s)
   }
+  func entries() throws -> DirectoryEntries { try DirectoryEntries(fd: fd) }
+
   func names() throws -> [String] {
-    var count = 0
-    guard let pointer = hmd_names(fd, &count) else {
+    let cursor = try entries()
+    var names: [String] = []
+    while let name = try cursor.next() { names.append(name) }
+    return names.sorted()
+  }
+}
+
+/// Retain only the current entry, including for very wide dependency directories.
+final class DirectoryEntries {
+  private let directory: OpaquePointer
+
+  init(fd: Int32) throws {
+    guard let directory = hmd_open_entries(fd) else {
       throw AgentServiceError.refused("Cannot list directory")
     }
-    defer { hmd_free(pointer) }
-    let data = Data(bytes: pointer, count: count)
-    return try data.split(separator: 0).map { bytes in
-      guard let name = String(data: Data(bytes), encoding: .utf8), !name.contains("/"), name != ".",
-        name != ".."
-      else { throw AgentServiceError.refused("Unsupported file name encoding") }
-      return name
-    }.sorted()
+    self.directory = directory
+  }
+
+  deinit { hmd_close_entries(directory) }
+
+  func next() throws -> String? {
+    var pointer: UnsafePointer<CChar>?
+    let status = hmd_next_entry(directory, &pointer)
+    if status == 0 { return nil }
+    guard status == 1, let pointer else {
+      throw AgentServiceError.refused("Cannot read directory entry")
+    }
+    guard let name = String(validatingCString: pointer), !name.contains("/"),
+      name != ".", name != ".." else {
+      throw AgentServiceError.refused("Unsupported file name encoding")
+    }
+    return name
   }
 }
 
@@ -110,6 +132,19 @@ struct ArtifactFilesystem {
   static func snapshot(
     _ artifact: Artifact, quietInterval: TimeInterval, now: Date, cancelled: () -> Bool, validatedKnownContainer: Bool = false, allowingContentChanges: Bool = false, rootOnly: Bool = false
   ) throws -> ArtifactStamp {
+    try inspect(
+      artifact, quietInterval: quietInterval, now: now, cancelled: cancelled,
+      validatedKnownContainer: validatedKnownContainer,
+      allowingContentChanges: allowingContentChanges, rootOnly: rootOnly).stamp
+  }
+
+  /// Inventory and interactive cleanup need a full safety walk, but only root/marker evidence.
+  /// Exact headless plans retain descendant stamps to detect changes after review.
+  static func inspect(
+    _ artifact: Artifact, quietInterval: TimeInterval, now: Date, cancelled: () -> Bool,
+    validatedKnownContainer: Bool = false, allowingContentChanges: Bool = false,
+    rootOnly: Bool = false, retainingContents: Bool = true
+  ) throws -> (stamp: ArtifactStamp, allocatedBytes: Int64) {
     let project = try DirectoryDescriptor(path: artifact.projectPath)
     let root = try DirectoryDescriptor(path: artifact.path)
     let rootStat = try root.stat()
@@ -117,6 +152,7 @@ struct ArtifactFilesystem {
       throw AgentServiceError.refused("Artifact crosses a filesystem boundary")
     }
     var nodes = [String: NodeStamp]()
+    var bytes: Int64 = 0
     func walk(_ dir: DirectoryDescriptor, _ relative: String, _ stamp: NodeStamp, depth: Int) throws {
       if cancelled() { throw CancellationError() }
       guard depth <= maximumDepth else {
@@ -127,14 +163,16 @@ struct ArtifactFilesystem {
       guard allowingContentChanges || now.timeIntervalSince(stamp.modified) >= quietInterval else {
         throw AgentServiceError.refused("Build output changed recently; wait for it to become idle")
       }
-      nodes[relative] = stamp
-      for name in try dir.names() {
+      if retainingContents || relative.isEmpty { nodes[relative] = stamp }
+      bytes = bytes.addingClamped(stamp.allocatedBytes)
+      let entries = try dir.entries()
+      while let name = try entries.next() {
         guard ![".git", ".hg", ".svn"].contains(name) else {
           throw AgentServiceError.refused("Nested version-control data cannot be cleaned")
         }
         if cancelled() { throw CancellationError() }
         let child = try dir.stat(name)
-        let path = relative.isEmpty ? name : relative + "/" + name
+        let path = retainingContents ? (relative.isEmpty ? name : relative + "/" + name) : name
         guard child.directory || child.regular || child.symbolicLink,
           child.mountID == rootStat.mountID
         else { throw AgentServiceError.refused("Mounts and special files cannot be cleaned") }
@@ -150,7 +188,8 @@ struct ArtifactFilesystem {
             throw AgentServiceError.refused(
               "Build output changed recently; wait for it to become idle")
           }
-          nodes[path] = child
+          if retainingContents { nodes[path] = child }
+          bytes = bytes.addingClamped(child.allocatedBytes)
         }
       }
       let current = try dir.stat()
@@ -160,6 +199,7 @@ struct ArtifactFilesystem {
     }
     if rootOnly {
       nodes[""] = rootStat
+      bytes = rootStat.allocatedBytes
     } else {
       try walk(root, "", rootStat, depth: 0)
     }
@@ -186,8 +226,9 @@ struct ArtifactFilesystem {
       throw AgentServiceError.refused("No bounded project marker evidence")
     }
     if artifact.kind == .terraformProviders {
-      for name in try project.names()
-      where ["tf", "tofu"].contains(URL(fileURLWithPath: name).pathExtension) {
+      let entries = try project.entries()
+      while let name = try entries.next() {
+        guard ["tf", "tofu"].contains((name as NSString).pathExtension) else { continue }
         let node = try project.stat(name)
         guard node.regular else {
           throw AgentServiceError.refused("Terraform source evidence is not a regular file")
@@ -195,8 +236,9 @@ struct ArtifactFilesystem {
         markers[name] = node
       }
     }
-    return ArtifactStamp(
-      project: try project.stat(), nodes: nodes, markers: markers, markerDigests: digests)
+    return (
+      ArtifactStamp(project: try project.stat(), nodes: nodes, markers: markers, markerDigests: digests),
+      bytes)
   }
   /// Explicit interactive override: permit changing contents, but never follow links,
   /// cross mounts, remove nested version control, or accept a replaced root.
@@ -213,7 +255,8 @@ struct ArtifactFilesystem {
       guard depth <= maximumDepth else {
         throw AgentServiceError.refused("Build output is nested too deeply to delete")
       }
-      for name in try directory.names() {
+      let entries = try directory.entries()
+      while let name = try entries.next() {
         if cancelled() { throw CancellationError() }
         guard ![".git", ".hg", ".svn"].contains(name) else {
           throw AgentServiceError.refused("Nested version-control data cannot be cleaned")
@@ -239,7 +282,7 @@ struct ArtifactFilesystem {
       }
     }
     try walk(root, depth: 0)
-    guard try parent.stat(name).sameIdentity(expected), try root.names().isEmpty else {
+    guard try parent.stat(name).sameIdentity(expected), try root.entries().next() == nil else {
       throw AgentServiceError.refused("Build output changed during deletion. A running build may be recreating files.")
     }
     guard name.withCString({ hmd_unlink(parent.fd, $0, 1) }) == 0 else {
@@ -270,7 +313,8 @@ struct ArtifactFilesystem {
       guard depth <= maximumDepth else {
         throw AgentServiceError.refused("Build output is nested too deeply to delete")
       }
-      for name in try directory.names() {
+      let entries = try directory.entries()
+      while let name = try entries.next() {
         if cancelled() { throw CancellationError() }
         let path = relative.isEmpty ? name : relative + "/" + name
         guard let expected = remainingNodes[path], try directory.stat(name) == expected else {
@@ -315,7 +359,7 @@ struct ArtifactFilesystem {
       }
     }
     try walk(root, "", depth: 0)
-    guard try parent.stat(name).sameIdentity(expected), try root.names().isEmpty else {
+    guard try parent.stat(name).sameIdentity(expected), try root.entries().next() == nil else {
       throw AgentServiceError.refused("Artifact changed during deletion")
     }
     guard name.withCString({ hmd_unlink(parent.fd, $0, 1) }) == 0 else {
