@@ -21,7 +21,7 @@ struct DiskSiftApp: App {
             CommandGroup(after: .sidebar) {
                 Divider()
                 Toggle("Show Menu Bar Icon", isOn: $showsMenuBarExtra)
-                Button(model.isScanning ? "Cancel Scan" : "Scan Now") {
+                Button(model.isScanning ? "Cancel Scan" : "Scan Build Output") {
                     model.isScanning ? model.cancelScan() : model.startScan()
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])

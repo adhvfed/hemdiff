@@ -3,6 +3,7 @@ import Foundation
 struct ScanConfiguration: Sendable {
     let automaticDiscoveryRoot: URL?
     let explicitRoots: [URL]
+    var includesFiles = false
 
     static var macDefault: ScanConfiguration {
         ScanConfiguration(
@@ -128,7 +129,7 @@ struct ProjectLocator: Sendable {
 
             // Explicit roots inside build output must not count those bytes again as personal files.
             let buildComponents: Set<String> = ["target", "node_modules", ".next", ".build", "DerivedData", ".git"]
-            let classifiesContent = !root.standardizedFileURL.pathComponents.contains { buildComponents.contains($0) }
+            let classifiesContent = configuration.includesFiles && !root.standardizedFileURL.pathComponents.contains { buildComponents.contains($0) }
                 && !ArtifactRules.containsArtifact(root)
             let fallback = try walkMarkers(
                 in: root, content: &content, classifiesContent: classifiesContent, progress: progress
@@ -262,16 +263,14 @@ struct ProjectLocator: Sendable {
             return ProjectDiscovery(markers: [], errorsSkipped: 0, repositoryRoots: [root])
         }
 
-        if classifiesContent {
-            do {
-                let values = try root.resourceValues(forKeys: Set(keys))
-                if values.isPackage == true || ContentKind.classify(root, isDirectory: true) != .other {
-                    try recordContent(root, values: values, content: &content)
-                    return ProjectDiscovery(markers: [], errorsSkipped: 0)
-                }
-            } catch is CancellationError { throw CancellationError() }
-            catch { return ProjectDiscovery(markers: [], errorsSkipped: 1) }
-        }
+        do {
+            let values = try root.resourceValues(forKeys: Set(keys))
+            if values.isPackage == true || ContentKind.classify(root, isDirectory: true) != .other {
+                if classifiesContent { try recordContent(root, values: values, content: &content) }
+                return ProjectDiscovery(markers: [], errorsSkipped: 0)
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch { return ProjectDiscovery(markers: [], errorsSkipped: 1) }
 
         guard let enumerator = FileManager.default.enumerator(
             at: root,
@@ -287,96 +286,112 @@ struct ProjectLocator: Sendable {
 
         var visited = 0
         var lastProgress = Date.distantPast
-        while let url = enumerator.nextObject() as? URL {
-            visited += 1
-            if visited % 256 == 0 {
-                try Task.checkCancellation()
-                if classifiesContent, Date().timeIntervalSince(lastProgress) >= 0.25 {
-                    lastProgress = Date()
-                    let inventory = content.inventory
-                    progress(ScanProgress(
-                        currentPath: url.path, entriesVisited: visited, artifactsFound: 0,
-                        bytesMeasured: inventory.allocatedBytes, filesClassified: inventory.count
-                    ))
-                }
-            }
-
-            do {
-                let values = try url.resourceValues(forKeys: Set(keys))
-                if values.isSymbolicLink == true {
-                    if values.isDirectory == true {
-                        enumerator.skipDescendants()
-                    }
-                    continue
-                }
-
-                if values.isDirectory == true {
-                    let parent = url.deletingLastPathComponent()
-                    let generated = ArtifactKind.allCases.filter {
-                        !$0.isKnownContainerArtifact && $0.folderName == url.lastPathComponent
-                            && ArtifactRules.matches($0, project: parent)
-                    }
-                    if !generated.isEmpty {
-                        for kind in generated {
-                            markers.insert(ProjectMarker(projectURL: parent.standardizedFileURL, kind: kind, scopeRoot: scopeRoot ?? root))
+        while true {
+            // Foundation caches resource values in autoreleased objects. Drain them
+            // in bounded batches even though this worker has no run-loop boundary.
+            let finished = try autoreleasepool {
+                for _ in 0..<256 {
+                    guard let url = enumerator.nextObject() as? URL else { return true }
+                    visited += 1
+                    if visited % 256 == 0 {
+                        try Task.checkCancellation()
+                        if Date().timeIntervalSince(lastProgress) >= 0.25 {
+                            lastProgress = Date()
+                            let inventory = content.inventory
+                            progress(ScanProgress(
+                                currentPath: url.path, entriesVisited: visited, artifactsFound: markers.count,
+                                bytesMeasured: inventory.allocatedBytes, filesClassified: inventory.count,
+                                phase: classifiesContent ? .indexingFiles : .findingProjects
+                            ))
                         }
-                        enumerator.skipDescendants()
-                        continue
                     }
-                    if url.lastPathComponent == ".turbo", ArtifactRules.matches(.turboCache, project: parent) {
-                        // Only cache is an artifact; other Turbo metadata remains untouched.
-                        markers.insert(ProjectMarker(projectURL: parent.standardizedFileURL, kind: .turboCache, scopeRoot: scopeRoot ?? root))
-                    }
-                    if url.lastPathComponent == "cache", parent.lastPathComponent == ".turbo",
-                       ArtifactRules.matches(.turboCache, project: parent.deletingLastPathComponent()) {
-                        enumerator.skipDescendants()
-                        continue
-                    }
-                    if url.lastPathComponent == "providers", parent.lastPathComponent == ".terraform",
-                       ArtifactRules.matches(.terraformProviders, project: parent.deletingLastPathComponent()) {
-                        markers.insert(ProjectMarker(projectURL: parent.deletingLastPathComponent().standardizedFileURL, kind: .terraformProviders, scopeRoot: scopeRoot ?? root))
-                        enumerator.skipDescendants()
-                        continue
-                    }
-                }
 
-                if values.isDirectory == true,
-                   Self.excludedComponents.contains(url.lastPathComponent) {
-                    if url.lastPathComponent == ".git" { repositories.append(url.deletingLastPathComponent()) }
-                    enumerator.skipDescendants()
-                    continue
-                }
+                    do {
+                        let values = try url.resourceValues(forKeys: Set(keys))
+                        if values.isSymbolicLink == true {
+                            if values.isDirectory == true {
+                                enumerator.skipDescendants()
+                            }
+                            continue
+                        }
 
-                if values.isDirectory == true,
-                   FileManager.default.fileExists(atPath: url.appendingPathComponent("HEAD").path),
-                   let repository = GitRepository.at(url), repository.directory.path == url.standardizedFileURL.path {
-                    repositories.append(url)
-                    enumerator.skipDescendants()
-                    continue
-                }
+                        if values.isDirectory == true {
+                            let parent = url.deletingLastPathComponent()
+                            let generated = ArtifactKind.allCases.filter {
+                                !$0.isKnownContainerArtifact && $0.folderName == url.lastPathComponent
+                                    && ArtifactRules.matches($0, project: parent)
+                            }
+                            if !generated.isEmpty {
+                                for kind in generated {
+                                    markers.insert(ProjectMarker(projectURL: parent.standardizedFileURL, kind: kind, scopeRoot: scopeRoot ?? root))
+                                }
+                                enumerator.skipDescendants()
+                                continue
+                            }
+                            if url.lastPathComponent == ".turbo", ArtifactRules.matches(.turboCache, project: parent) {
+                                // Only cache is an artifact; other Turbo metadata remains untouched.
+                                markers.insert(ProjectMarker(projectURL: parent.standardizedFileURL, kind: .turboCache, scopeRoot: scopeRoot ?? root))
+                            }
+                            if url.lastPathComponent == "cache", parent.lastPathComponent == ".turbo",
+                               ArtifactRules.matches(.turboCache, project: parent.deletingLastPathComponent()) {
+                                enumerator.skipDescendants()
+                                continue
+                            }
+                            if url.lastPathComponent == "providers", parent.lastPathComponent == ".terraform",
+                               ArtifactRules.matches(.terraformProviders, project: parent.deletingLastPathComponent()) {
+                                markers.insert(ProjectMarker(projectURL: parent.deletingLastPathComponent().standardizedFileURL, kind: .terraformProviders, scopeRoot: scopeRoot ?? root))
+                                enumerator.skipDescendants()
+                                continue
+                            }
+                        }
 
-                if classifiesContent,
-                   values.isRegularFile == true || values.isPackage == true
-                    || (values.isDirectory == true && ContentKind.classify(url, isDirectory: true) != .other) {
-                    if values.isDirectory == true { enumerator.skipDescendants() }
-                    if url.lastPathComponent != ".git" {
-                        do { try recordContent(url, values: values, content: &content) }
-                        catch is CancellationError { throw CancellationError() }
-                        catch { content.errorsSkipped += 1 }
+                        if values.isDirectory == true,
+                           Self.excludedComponents.contains(url.lastPathComponent) {
+                            if url.lastPathComponent == ".git" { repositories.append(url.deletingLastPathComponent()) }
+                            enumerator.skipDescendants()
+                            continue
+                        }
+
+                        if values.isDirectory == true,
+                           FileManager.default.fileExists(atPath: url.appendingPathComponent("HEAD").path),
+                           let repository = GitRepository.at(url), repository.directory.path == url.standardizedFileURL.path {
+                            repositories.append(url)
+                            enumerator.skipDescendants()
+                            continue
+                        }
+
+                        if !classifiesContent, values.isDirectory == true,
+                           values.isPackage == true || ContentKind.classify(url, isDirectory: true) != .other {
+                            enumerator.skipDescendants()
+                            continue
+                        }
+
+                        if classifiesContent,
+                           values.isRegularFile == true || values.isPackage == true
+                            || (values.isDirectory == true && ContentKind.classify(url, isDirectory: true) != .other) {
+                            if values.isDirectory == true { enumerator.skipDescendants() }
+                            if url.lastPathComponent != ".git" {
+                                do { try recordContent(url, values: values, content: &content) }
+                                catch is CancellationError { throw CancellationError() }
+                                catch { content.errorsSkipped += 1 }
+                            }
+                        }
+
+                        if values.isRegularFile == true {
+                            if url.lastPathComponent == ".git" || url.lastPathComponent == "HEAD" {
+                                repositories.append(url.deletingLastPathComponent())
+                            }
+                            markers.formUnion(projectMarkers(for: url, scopeRoot: scopeRoot ?? root))
+                        }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        errorsSkipped += 1
                     }
                 }
-
-                if values.isRegularFile == true {
-                    if url.lastPathComponent == ".git" || url.lastPathComponent == "HEAD" {
-                        repositories.append(url.deletingLastPathComponent())
-                    }
-                    markers.formUnion(projectMarkers(for: url, scopeRoot: scopeRoot ?? root))
-                }
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                errorsSkipped += 1
+                return false
             }
+            if finished { break }
         }
 
         return ProjectDiscovery(

@@ -52,7 +52,8 @@ final class ContentClassificationTests: XCTestCase {
         try fixture.file("project/node_modules/dependency/movie.mp4", size: 16_384)
         try fixture.file("project/.git/objects/blob", size: 4_096)
         try FileManager.default.createSymbolicLink(at: fixture.url.appendingPathComponent("linked.mp4"), withDestinationURL: fixture.url.appendingPathComponent("media/movie.mp4"))
-        let snapshot = try await ArtifactScanner().scan(roots: [fixture.url, fixture.url.appendingPathComponent("media"), fixture.url])
+        let snapshot = try await ArtifactScanner().scan(roots: [fixture.url, fixture.url.appendingPathComponent("media"), fixture.url], includingFiles: true)
+        defer { discardIndex(in: snapshot) }
         XCTAssertEqual(snapshot.content.count, 3)
         XCTAssertEqual(snapshot.content.errorsSkipped, 0)
         XCTAssertEqual(Set(snapshot.content.summaries.map(\.kind)), [.video, .documents, .sourceCode])
@@ -69,7 +70,8 @@ final class ContentClassificationTests: XCTestCase {
         let scanner = ArtifactScanner(locator: ProjectLocator(indexedPaths: { _ in [] }))
         let automatic = try await scanner.scan(configuration: ScanConfiguration(automaticDiscoveryRoot: fixture.url, explicitRoots: []))
         XCTAssertEqual(automatic.content.count, 0)
-        let explicit = try await scanner.scan(roots: [fixture.url.appendingPathComponent("Downloads")])
+        let explicit = try await scanner.scan(roots: [fixture.url.appendingPathComponent("Downloads")], includingFiles: true)
+        defer { discardIndex(in: explicit) }
         XCTAssertEqual(explicit.content.count, 1)
     }
 
@@ -79,8 +81,10 @@ final class ContentClassificationTests: XCTestCase {
         try fixture.file("Guest.utm/Data/disk.qcow2", size: 8_192)
         try fixture.file("Guest.utm/config.plist", size: 4_096)
         let package = fixture.url.appendingPathComponent("Guest.utm")
-        let parentScan = try await ArtifactScanner().scan(roots: [fixture.url])
-        let rootScan = try await ArtifactScanner().scan(roots: [package])
+        let parentScan = try await ArtifactScanner().scan(roots: [fixture.url], includingFiles: true)
+        defer { discardIndex(in: parentScan) }
+        let rootScan = try await ArtifactScanner().scan(roots: [package], includingFiles: true)
+        defer { discardIndex(in: rootScan) }
         for inventory in [parentScan.content, rootScan.content] {
             XCTAssertEqual(inventory.count, 1)
             let item = try XCTUnwrap(inventory.summaries.first?.largestItems.first)
@@ -96,7 +100,8 @@ final class ContentClassificationTests: XCTestCase {
         try fixture.file("real/photo.jpg", size: 4_096)
         let alias = fixture.url.appendingPathComponent("alias")
         try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: fixture.url.appendingPathComponent("real"))
-        let scan = try await ArtifactScanner().scan(roots: [alias])
+        let scan = try await ArtifactScanner().scan(roots: [alias], includingFiles: true)
+        defer { discardIndex(in: scan) }
         XCTAssertEqual(scan.content.count, 0)
         XCTAssertEqual(scan.content.errorsSkipped, 1)
     }
@@ -107,7 +112,8 @@ final class ContentClassificationTests: XCTestCase {
         let recorder = ProgressRecorder()
         let roots = (0..<3).map { fixture.url.appendingPathComponent("root-\($0)") }
         for index in 0..<768 { try fixture.file("root-\(index / 256)/file-\(index).txt", size: 32) }
-        let snapshot = try await ArtifactScanner().scan(roots: roots) { recorder.record($0) }
+        let snapshot = try await ArtifactScanner().scan(roots: roots, includingFiles: true) { recorder.record($0) }
+        defer { discardIndex(in: snapshot) }
         let events = recorder.events
         XCTAssertEqual(snapshot.content.count, 768)
         XCTAssertFalse(events.isEmpty)
@@ -162,5 +168,11 @@ private final class ProgressRecorder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return recorded
+    }
+}
+
+private func discardIndex(in snapshot: DiskSnapshot) {
+    if let path = snapshot.content.indexPath {
+        try? FileManager.default.removeItem(atPath: path)
     }
 }

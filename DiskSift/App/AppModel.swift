@@ -7,6 +7,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var snapshot: DiskSnapshot
     @Published private(set) var volume: VolumeSnapshot?
     @Published private(set) var isScanning = false
+    @Published private(set) var isScanningFiles = false
     @Published private(set) var scanProgress: ScanProgress?
     @Published var destination: AppDestination? = .overview
     @Published var pendingQuickCleanup: [Artifact]?
@@ -117,8 +118,6 @@ final class AppModel: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
-            await self.upgradeClassification()
-            await self.refreshTrash()
             if self.snapshot.finishedAt == .distantPast || self.isSnapshotStale {
                 self.startScan()
             }
@@ -137,6 +136,14 @@ final class AppModel: ObservableObject {
             || !snapshot.isFresh(maxAge: Self.freshnessInterval)
     }
 
+    var isFileInventoryStale: Bool {
+        guard let finishedAt = snapshot.content.finishedAt,
+              let roots = snapshot.content.scannedRoots else { return true }
+        let age = Date().timeIntervalSince(finishedAt)
+        return Set(roots) != Set(ArtifactScanner.normalizedRoots(scanRoots).map(\.path))
+            || age < 0 || age > Self.freshnessInterval
+    }
+
     var selectedArtifacts: [Artifact] {
         snapshot.artifacts.filter { selectedArtifactIDs.contains($0.id) }
     }
@@ -153,22 +160,25 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func startScan() {
+    func startScan(includingFiles: Bool = false) {
         guard !isBusy, !isReviewingDeletion, !isShowingSetup else { return }
         scanGeneration = UUID()
         isScanning = true
+        isScanningFiles = includingFiles
         scanProgress = ScanProgress(
             currentPath: "Finding projects…",
             entriesVisited: 0,
             artifactsFound: 0,
-            bytesMeasured: 0
+            bytesMeasured: 0,
+            phase: .findingProjects
         )
         errorMessage = nil
         noticeMessage = nil
 
         let configuration = ScanConfiguration(
             automaticDiscoveryRoot: homeDirectory,
-            explicitRoots: scanRoots
+            explicitRoots: scanRoots,
+            includesFiles: includingFiles
         )
         let scanner = scanner
         let store = snapshotStore
@@ -176,16 +186,22 @@ final class AppModel: ObservableObject {
         scanTask = Task { [weak self] in
             defer {
                 self?.isScanning = false
+                self?.isScanningFiles = false
                 self?.scanProgress = nil
             }
             do {
-                let completed = try await scanner.scan(configuration: configuration) { progress in
+                var completed = try await scanner.scan(configuration: configuration) { progress in
                     progressRelay.send(progress)
                 }
                 guard let self, !Task.isCancelled else { return }
                 let previousIndex = self.snapshot.content.indexPath
+                if !includingFiles {
+                    completed.content = self.snapshot.content
+                } else {
+                    self.removedContentPaths.removeAll()
+                    self.contentRevision += 1
+                }
                 self.snapshot = completed
-                self.contentRevision += 1
                 self.selectedArtifactIDs.formIntersection(Set(completed.artifacts.map(\.id)))
                 self.refreshVolume()
                 do {
@@ -358,7 +374,7 @@ final class AppModel: ObservableObject {
     private func reconcileRemovedPaths(_ paths: [String]) async {
         guard !paths.isEmpty else { return }
         removedContentPaths.formUnion(paths)
-        let coverageErrors = snapshot.content.errorsSkipped
+        let previousContent = snapshot.content
         snapshot.content = snapshot.content.removing(paths: paths)
         contentRevision += 1
         if let path = snapshot.content.indexPath {
@@ -369,7 +385,9 @@ final class AppModel: ObservableObject {
                     return try index.inventory()
                 }.value
                 snapshot.content = inventory
-                snapshot.content.errorsSkipped = coverageErrors
+                snapshot.content.errorsSkipped = previousContent.errorsSkipped
+                snapshot.content.scannedRoots = previousContent.scannedRoots
+                snapshot.content.finishedAt = previousContent.finishedAt
                 contentRevision += 1
             } catch { errorMessage = "Items removed, but the saved file index could not be updated." }
         }
@@ -381,7 +399,7 @@ final class AppModel: ObservableObject {
         guard !isBusy, let path = snapshot.content.indexPath else { return }
         isUpdatingInventory = true
         defer { finishInventoryUpdate() }
-        let coverageErrors = snapshot.content.errorsSkipped
+        let previousContent = snapshot.content
         let pendingRemovals = snapshot.content.removedPaths ?? []
         do {
             let inventory = try await Task.detached(priority: .utility) {
@@ -391,7 +409,9 @@ final class AppModel: ObservableObject {
                 return try index.inventory()
             }.value
             snapshot.content = inventory
-            snapshot.content.errorsSkipped = coverageErrors
+            snapshot.content.errorsSkipped = previousContent.errorsSkipped
+            snapshot.content.scannedRoots = previousContent.scannedRoots
+            snapshot.content.finishedAt = previousContent.finishedAt
             contentRevision += 1
             try snapshotStore.save(snapshot)
         } catch { errorMessage = "Couldn’t update saved file classifications." }

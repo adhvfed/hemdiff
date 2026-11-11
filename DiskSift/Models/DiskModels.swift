@@ -85,14 +85,23 @@ struct VolumeSnapshot: Equatable, Sendable {
 }
 
 struct ScanProgress: Equatable, Sendable {
+    enum Phase: Sendable {
+        case findingProjects, measuringBuildOutput, indexingFiles
+    }
+
     let currentPath: String
     let entriesVisited: Int
     let artifactsFound: Int
     let bytesMeasured: Int64
     var filesClassified: Int = 0
+    var phase: Phase = .measuringBuildOutput
 
     var summary: String {
-        filesClassified > 0 ? "\(filesClassified.formatted()) items classified" : "\(artifactsFound) folders measured"
+        switch phase {
+        case .findingProjects: "\(entriesVisited.formatted()) entries checked · \(artifactsFound) build folders found"
+        case .measuringBuildOutput: "\(artifactsFound) folders measured"
+        case .indexingFiles: "\(filesClassified.formatted()) items classified"
+        }
     }
 }
 

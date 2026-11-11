@@ -3,6 +3,25 @@ import XCTest
 @testable import DiskSift
 
 final class ArtifactScannerTests: XCTestCase {
+    func testBuildScanWorksWhenAFileIndexCannotBeCreated() async throws {
+        let fixture = try TemporaryDirectory()
+        defer { fixture.remove() }
+        try fixture.directory("project/target")
+        try fixture.file("project/Cargo.toml", contents: "[workspace]")
+        try fixture.dataFile("project/target/output", byteCount: 4_096)
+        let scanner = ArtifactScanner(createIndex: { throw CocoaError(.fileWriteOutOfSpace) })
+        let snapshot = try await scanner.scan(roots: [fixture.url])
+        XCTAssertEqual(snapshot.artifacts.map(\.kind), [.rustTarget])
+        XCTAssertNil(snapshot.content.indexPath)
+        XCTAssertEqual(snapshot.content.count, 0)
+        do {
+            _ = try await scanner.scan(roots: [fixture.url], includingFiles: true)
+            XCTFail("A requested file scan must report its index creation failure")
+        } catch let error as CocoaError {
+            XCTAssertEqual(error.code, .fileWriteOutOfSpace)
+        }
+    }
+
     func testOverlappingArtifactsAreMeasuredOnlyOnce() async throws {
         let fixture = try TemporaryDirectory()
         defer { fixture.remove() }

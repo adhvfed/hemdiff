@@ -32,7 +32,7 @@ struct OverviewView: View {
                 HStack(alignment: .top, spacing: 14) {
                     recoveryCard("Build output", subtitle: model.snapshot.artifacts.isEmpty ? "No build output to clean" : "\(model.snapshot.artifacts.count) folders · Can be rebuilt",
                                  bytes: model.snapshot.artifactBytes, icon: "shippingbox", color: DiskSiftTheme.node, action: openReclaim)
-                    recoveryCard("Trash", subtitle: model.trashSnapshot.hasEstimate ? "\(model.trashSnapshot.items.count) \(model.trashSnapshot.items.count == 1 ? "item" : "items") · Empty to reclaim" : "Allow access to measure",
+                    recoveryCard("Trash", subtitle: model.trashSnapshot.hasEstimate ? "\(model.trashSnapshot.items.count) \(model.trashSnapshot.items.count == 1 ? "item" : "items") · Empty to reclaim" : "Open to measure",
                                  bytes: model.trashSnapshot.bytes, icon: "trash", color: DiskSiftTheme.rust,
                                  available: model.trashSnapshot.hasEstimate, action: openTrash)
                 }
@@ -42,11 +42,15 @@ struct OverviewView: View {
                         Text("\(ByteText.compact(model.snapshot.content.allocatedBytes)) in scanned folders")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
+                        Button("Scan Files") {
+                            model.destination = .files
+                            model.startScan(includingFiles: true)
+                        }.disabled(model.isBusy || model.scanRoots.isEmpty)
                         Button("Browse Largest") { openFiles(nil) }.disabled(model.snapshot.content.count == 0)
                     }
                     if model.snapshot.content.summaries.isEmpty {
                         HStack {
-                            Text(model.isScanning ? "Measuring files…" : "Scan folders to find large files.")
+                            Text(model.isScanningFiles ? "Measuring files…" : "Scan files on request to find large personal files.")
                                 .font(.callout).foregroundStyle(.secondary)
                             Spacer()
                             Button("Choose Folders…") { model.destination = .locations }
@@ -87,18 +91,15 @@ struct OverviewView: View {
                 }
                 Spacer(minLength: 0)
                 VStack(alignment: .trailing, spacing: 10) {
-                    Button(model.isScanning ? "Cancel Scan" : "Scan Now") {
+                    Button(model.isScanning ? "Cancel Scan" : "Scan Build Output") {
                         model.isScanning ? model.cancelScan() : model.startScan()
                     }.disabled(!model.isScanning && (model.isBusy || model.isReviewingDeletion))
-                    if model.snapshot.artifacts.isEmpty {
-                        Button("Review Large Files") { openFiles(nil) }
-                            .buttonStyle(HemdiffButtonStyle(emphasis: .primary))
-                            .disabled(model.snapshot.content.count == 0)
-                    } else {
-                    Button("Clean Build Output…") { model.requestQuickCleanup() }
-                        .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
-                        .disabled(model.snapshot.artifacts.isEmpty || model.isCleanupBlocked || model.isReviewingDeletion)
+                    Button("Clean Build Output…") {
+                        if model.snapshot.artifacts.isEmpty { openReclaim() }
+                        else { model.requestQuickCleanup() }
                     }
+                    .buttonStyle(HemdiffButtonStyle(emphasis: .primary)).tint(DiskSiftTheme.node)
+                    .disabled(model.isCleanupBlocked || model.isReviewingDeletion)
                     if model.isSnapshotStale && model.snapshot.finishedAt != .distantPast {
                         Label("Scan needed", systemImage: "clock").font(.caption).foregroundStyle(.orange)
                     }

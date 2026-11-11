@@ -142,7 +142,10 @@ private final class ModelFixture {
     }
 
     func model(locator: ProjectLocator = ProjectLocator(indexedPaths: { _ in [] })) -> AppModel {
-        AppModel(scanner: ArtifactScanner(locator: locator),
+        let directory = url
+        return AppModel(scanner: ArtifactScanner(locator: locator, createIndex: {
+            try ContentIndex(path: directory.appendingPathComponent("\(UUID()).sqlite").path, create: true)
+        }),
                  snapshotStore: store, cleanup: InteractiveCleanup(quietInterval: 0),
                  homeDirectory: url, defaults: defaults, startsAutomatically: false)
     }
@@ -250,5 +253,39 @@ extension AppModelTests {
         XCTAssertEqual(model.snapshot.content.summaries.first?.kind, .binaries)
         XCTAssertEqual(model.snapshot.content.errorsSkipped, 4)
         XCTAssertEqual(try fixture.store.load()?.content.count, 1)
+    }
+}
+
+extension AppModelTests {
+    func testBuildScanPreservesFileInventoryAndFilesRequireAnExplicitScan() async throws {
+        let fixture = try ModelFixture()
+        defer { fixture.remove() }
+        let root = fixture.url.appendingPathComponent("Work")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("personal file".utf8).write(to: root.appendingPathComponent("notes.txt"))
+        let model = fixture.model()
+        model.addScanRoot(root)
+        model.startScan()
+        XCTAssertFalse(model.isScanningFiles)
+        try await waitForScan(model)
+        XCTAssertEqual(model.snapshot.content.count, 0)
+        XCTAssertNil(model.snapshot.content.indexPath)
+
+        model.startScan(includingFiles: true)
+        XCTAssertTrue(model.isScanningFiles)
+        try await waitForScan(model)
+        let inventory = model.snapshot.content
+        XCTAssertEqual(inventory.count, 1)
+        XCTAssertNotNil(inventory.indexPath)
+        XCTAssertEqual(inventory.scannedRoots, [root.path])
+        XCTAssertFalse(model.isFileInventoryStale)
+
+        model.startScan()
+        try await waitForScan(model)
+        XCTAssertEqual(model.snapshot.content, inventory)
+        XCTAssertEqual(try fixture.store.load()?.content, inventory)
+        XCTAssertFalse(model.isFileInventoryStale)
+        model.addScanRoot(fixture.url.appendingPathComponent("Another"))
+        XCTAssertTrue(model.isFileInventoryStale)
     }
 }

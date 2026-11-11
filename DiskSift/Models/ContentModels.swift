@@ -141,6 +141,8 @@ struct ContentInventory: Codable, Equatable, Sendable {
     var errorsSkipped = 0
     var indexPath: String? = nil
     var removedPaths: [String]? = nil
+    var scannedRoots: [String]? = nil
+    var finishedAt: Date? = nil
     var count: Int { summaries.reduce(0) { $0 + $1.count } }
     var allocatedBytes: Int64 { summaries.reduce(0) { $0 + $1.allocatedBytes } }
 

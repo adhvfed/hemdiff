@@ -48,12 +48,21 @@ Git worktrees are followed from the repositories Hemdiff finds. Each checkout's
 build output is listed on its own, and cleanup only ever touches the output
 folder, never the checkout or the `.git` data.
 
-Scans run at low priority, are cached between launches, and refresh on their own
-after six hours while the app is open. Disk capacity refreshes without a scan.
+**Scan Build Output** focuses on rebuildable folders. It does not create a file
+index, and cleanup remains available while a scan is running. Scans run at low
+priority, are cached between launches, and refresh on their own after six hours
+while the app is open. Disk capacity refreshes without a scan.
+
+Personal files and Trash are measured on request, so opening Hemdiff does not
+start indexing unrelated files or measuring a large Trash folder. Inventory and
+interactive cleanup stream artifact entries instead of holding every file's
+metadata in memory. Headless cleanup plans retain exact per-file evidence to
+detect changes between planning and deletion.
 
 ## Files and Trash
 
-The **Files** view sorts everything in your scan locations into categories:
+In **Files**, press **Scan Files** to index personal files in your scan locations.
+This optional scan sorts them into categories:
 video, audio, images, documents, archives, disk images, virtual machines, AI
 models, databases, code, applications, logs and other. Filter by name, sort by
 size or date, tick files across pages, and press Command-Y to preview one.
@@ -66,7 +75,7 @@ Access before the app can read Trash.
 
 ## Menu bar
 
-The menu bar item shows **Scan Now**, **Clean Build Output…** and the five
+The menu bar item shows **Scan Build Output**, **Clean Build Output…** and the five
 projects with the most build output. Each project has a cleanup action that
 confirms its folders before deleting them. **View → Show Menu Bar Icon** brings
 the item back if you hid it.

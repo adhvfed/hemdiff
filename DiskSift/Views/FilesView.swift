@@ -31,13 +31,26 @@ struct FilesView: View {
                         Button { preview = focusedItem } label: { Image(systemName: "eye") }
                             .disabled(focusedItem == nil).help("Preview selected file")
                     }
+                    Button(model.isScanningFiles ? "Cancel File Scan" : "Scan Files") {
+                        model.isScanningFiles ? model.cancelScan() : model.startScan(includingFiles: true)
+                    }.disabled((model.isBusy && !model.isScanningFiles) || model.scanRoots.isEmpty)
                     Button("Scan Locations", action: openLocations)
                 }
                 ModelMessages()
+                if inventory.count > 0 && model.isFileInventoryStale {
+                    Label("File results need a refresh. Scan Files to update them.", systemImage: "clock")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 if let error = review.error { StatusMessage(text: error, systemImage: "exclamationmark.triangle", tint: .orange) }
                 if inventory.count == 0 {
-                    ContentUnavailableView("No files scanned", systemImage: "doc.on.doc", description: Text("Add a folder in Scan Locations, then scan."))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ContentUnavailableView {
+                        Label(model.isScanningFiles ? "Scanning files…" : "No files scanned", systemImage: "doc.on.doc")
+                    } description: {
+                        Text("File scanning runs only when requested. Choose folders in Scan Locations, then scan files here.")
+                    } actions: {
+                        Button("Scan Files") { model.startScan(includingFiles: true) }
+                            .disabled(model.isBusy || model.scanRoots.isEmpty)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     HStack(alignment: .top, spacing: 20) {
                         if geometry.size.width > 760 { categoryList.frame(width: 190) }
@@ -93,6 +106,7 @@ struct FilesView: View {
                 .keyboardShortcut("y", modifiers: .command).disabled(focusedItem == nil).hidden()
         }
         .onChange(of: review.checked.isEmpty) { _, empty in if empty { checkedOnly = false } }
+        .task { await model.upgradeClassification() }
         .task(id: queryKey) {
             if !review.search.isEmpty { try? await Task.sleep(for: .milliseconds(180)) }
             guard !Task.isCancelled else { return }

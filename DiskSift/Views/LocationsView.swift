@@ -16,7 +16,7 @@ struct LocationsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Scan Locations").font(.system(size: 30, weight: .bold, design: .rounded)).tracking(-0.6)
-                    Text("Folders to measure and check for build output.").font(.callout).foregroundStyle(.secondary)
+                    Text("Folders to check for build output. Scan personal files separately in Files.").font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button { findsProjects = true } label: { Label("Find Projects", systemImage: "sparkle.magnifyingglass") }
@@ -65,11 +65,11 @@ struct LocationsView: View {
             HStack(spacing: 24) {
                 if model.snapshot.finishedAt != .distantPast {
                     diagnostic("Last scan", value: scanDuration)
-                    diagnostic("Files measured", value: model.snapshot.content.count.formatted())
+                    diagnostic("Build folders", value: model.snapshot.artifacts.count.formatted())
                     if model.snapshot.errorsSkipped > 0 { diagnostic("Skipped", value: model.snapshot.errorsSkipped.formatted()) }
                 }
                 Spacer()
-                Button(model.isScanning ? "Cancel Scan" : "Scan Now") {
+                Button(model.isScanning ? "Cancel Scan" : "Scan Build Output") {
                     model.isScanning ? model.cancelScan() : model.startScan()
                 }.buttonStyle(HemdiffButtonStyle(emphasis: .primary))
                     .disabled(model.isBusy && !model.isScanning)

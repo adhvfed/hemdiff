@@ -63,10 +63,10 @@ struct ReclaimView: View {
             }
             if model.snapshot.artifacts.isEmpty {
                 VStack(spacing: 0) {
-                ReviewEmptyState(title: model.isScanning ? "Looking for build output…" : "No build output to clean", detail: "Scan again after building, or review large files in Files.", icon: "checkmark.seal", fillsSpace: false)
+                ReviewEmptyState(title: model.isScanning ? "Looking for build output…" : "No build output to clean", detail: "Scan for rebuildable folders, or add a project folder in Scan Locations.", icon: "checkmark.seal", fillsSpace: false)
                 HStack {
-                    Button("Review Large Files") { model.destination = .files }
-                    Button("Scan Now") { model.startScan() }.disabled(model.isBusy)
+                    Button("Choose Folders…") { model.destination = .locations }
+                    Button("Scan Build Output") { model.startScan() }.disabled(model.isBusy)
                 }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

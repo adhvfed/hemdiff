@@ -121,13 +121,13 @@ struct RootView: View {
                 Text(model.isScanning ? "Scanning…" : "\(model.scanRoots.count) scan locations")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if model.destination != .overview {
+            if model.destination != .overview && model.destination != .files {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     model.isScanning ? model.cancelScan() : model.startScan()
                 } label: {
                     Label(
-                        model.isScanning ? "Cancel Scan" : "Scan Now",
+                        model.isScanning ? "Cancel Scan" : "Scan Build Output",
                         systemImage: model.isScanning ? "stop.fill" : "arrow.clockwise"
                     )
                 }

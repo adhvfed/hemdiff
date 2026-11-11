@@ -91,7 +91,7 @@ struct MenuBarPanel: View {
             HStack {
                 Button("Open Hemdiff") { showMainWindow() }.keyboardShortcut(.defaultAction)
                 Spacer()
-                Button(model.isScanning ? "Cancel Scan" : "Scan Now") { model.isScanning ? model.cancelScan() : model.startScan() }.disabled(!model.isScanning && (model.isBusy || model.isShowingSetup || model.isReviewingDeletion))
+                Button(model.isScanning ? "Cancel Scan" : "Scan Build Output") { model.isScanning ? model.cancelScan() : model.startScan() }.disabled(!model.isScanning && (model.isBusy || model.isShowingSetup || model.isReviewingDeletion))
             }
         }.padding(20).frame(width: 350).buttonStyle(HemdiffButtonStyle())
     }

@@ -2,6 +2,7 @@ import Foundation
 
 struct ArtifactScanner: Sendable {
     var locator = ProjectLocator()
+    var createIndex: @Sendable () throws -> ContentIndex = { try ContentIndex.temporary() }
 
     func scan(
         configuration: ScanConfiguration,
@@ -10,9 +11,9 @@ struct ArtifactScanner: Sendable {
         let work = Task.detached(priority: .utility) {
             let startedAt = Date()
             let reporter = ScanProgressReporter(progress)
-            let index = try ContentIndex.temporary()
+            let index = configuration.includesFiles ? try createIndex() : nil
             var published = false
-            defer { if !published { index.discard() } }
+            defer { if !published { index?.discard() } }
             let discovery = try locator.locate(configuration: configuration, contentIndex: index, progress: { reporter.send($0) })
             var result = try Self.measure(
                 discovery: discovery,
@@ -20,9 +21,13 @@ struct ArtifactScanner: Sendable {
                 progress: { reporter.send($0) },
                 startedAt: startedAt
             )
-            try index.finish()
+            try index?.finish()
             try Task.checkCancellation()
-            result.content.indexPath = index.path
+            if configuration.includesFiles {
+                result.content.indexPath = index?.path
+                result.content.scannedRoots = Self.normalizedRoots(configuration.explicitRoots).map(\.path)
+                result.content.finishedAt = result.finishedAt
+            }
             published = true
             return result
         }
@@ -36,12 +41,14 @@ struct ArtifactScanner: Sendable {
 
     func scan(
         roots: [URL],
+        includingFiles: Bool = false,
         progress: @escaping @Sendable (ScanProgress) -> Void = { _ in }
     ) async throws -> DiskSnapshot {
         try await scan(
             configuration: ScanConfiguration(
                 automaticDiscoveryRoot: nil,
-                explicitRoots: roots
+                explicitRoots: roots,
+                includesFiles: includingFiles
             ),
             progress: progress
         )
